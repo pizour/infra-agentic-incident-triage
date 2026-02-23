@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "netbox.fullname" . }}-seed-script
+  labels:
+    {{- include "netbox.labels" . | nindent 4 }}
+data:
+  seed.py: |-
+{{ .Files.Get "files/seed.py" | indent 4 }}

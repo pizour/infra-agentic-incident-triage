@@ -1,0 +1,6 @@
+apiVersion: v2
+name: netbox
+description: A Helm chart for NetBox with worker and dependencies
+type: application
+version: 0.1.0
+appVersion: "latest"

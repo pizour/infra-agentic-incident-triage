@@ -4,7 +4,11 @@ import pulumi_kubernetes as kubernetes
 def create_argocd(
     cluster_name: pulumi.Output[str],
     endpoint: pulumi.Output[str],
-    ca_certificate: pulumi.Output[str]
+    ca_certificate: pulumi.Output[str],
+    chart_version: str = "6.7.11",
+    chart_repo: str = "https://argoproj.github.io/argo-helm",
+    app_of_apps_path: str = "../services/argocd-apps",
+    namespace: str = "argocd"
 ) -> dict:
     """
     Deploy ArgoCD to GKE cluster using Helm
@@ -48,7 +52,7 @@ users:
     # Create argocd namespace
     argocd_ns = kubernetes.core.v1.Namespace(
         "argocd-ns",
-        metadata={"name": "argocd"},
+        metadata={"name": namespace},
         opts=pulumi.ResourceOptions(provider=k8s_provider)
     )
 
@@ -57,9 +61,9 @@ users:
         "argocd",
         name="argocd",
         chart="argo-cd",
-        version="6.7.11",
+        version=chart_version,
         repository_opts=kubernetes.helm.v3.RepositoryOptsArgs(
-            repo="https://argoproj.github.io/argo-helm"
+            repo=chart_repo
         ),
         namespace=argocd_ns.metadata.name,
         values={
@@ -70,6 +74,15 @@ users:
             }
         },
         opts=pulumi.ResourceOptions(provider=k8s_provider, depends_on=[argocd_ns])
+    )
+
+    # Deploy the ArgoCD App of Apps Helm chart
+    argocd_apps_release = kubernetes.helm.v3.Release(
+        "argocd-apps",
+        name="argocd-apps",
+        chart=app_of_apps_path,
+        namespace=argocd_ns.metadata.name,
+        opts=pulumi.ResourceOptions(provider=k8s_provider, depends_on=[argocd_chart])
     )
 
     return {

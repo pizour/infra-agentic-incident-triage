@@ -1,0 +1,42 @@
+fullnameOverride: "netbox"
+
+db:
+  image:
+    repository: postgres
+    tag: 16-alpine
+    pullPolicy: IfNotPresent
+  user: netbox
+  database: netbox
+  service:
+    port: 5432
+  persistence:
+    size: 20Gi
+    storageClass: ""
+
+redis:
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  service:
+    port: 6379
+
+app:
+  image:
+    repository: netboxcommunity/netbox
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  superuser:
+    name: admin
+    email: "admin@example.com"
+  extraPy: |
+    API_TOKEN_PEPPERS = {
+        'v1': 'NetBoxLabsSeedPepper1234567890',
+    }
+secrets:
+  NETBOX_DB_PASS: ""
+  NETBOX_SECRET_KEY: ""
+  NETBOX_API_TOKEN: ""
+  NETBOX_ADMIN_PASS: ""

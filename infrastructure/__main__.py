@@ -110,7 +110,11 @@ def main():
     argocd_resources = create_argocd(
         cluster_name=cluster_resources['cluster_name'],
         endpoint=cluster_resources['endpoint'],
-        ca_certificate=cluster_resources['ca_certificate']
+        ca_certificate=cluster_resources['ca_certificate'],
+        chart_version=config.argocd_chart_version,
+        chart_repo=config.argocd_chart_repo,
+        app_of_apps_path=config.argocd_app_of_apps_path,
+        namespace=config.argocd_namespace
     )
     
     # Stack Outputs

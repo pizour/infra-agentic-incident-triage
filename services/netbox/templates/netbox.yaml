@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "netbox.fullname" . }}
+  labels:
+    app.kubernetes.io/name: netbox
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: netbox
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: netbox
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      initContainers:
+        - name: netbox-seed
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          command:
+            - /opt/netbox/docker-entrypoint.sh
+            - /opt/netbox/venv/bin/python
+            - /opt/netbox/netbox/manage.py
+            - shell
+            - -c
+            - "exec(open('/seed/seed.py').read())"
+          envFrom:
+            - configMapRef:
+                name: {{ include "netbox.fullname" . }}-env
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_DB_PASS
+            - name: SUPERUSER_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_API_TOKEN
+            - name: SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_ADMIN_PASS
+            - name: SKIP_SUPERUSER
+              value: "false"
+          volumeMounts:
+            - name: seed-script
+              mountPath: /seed
+      containers:
+        - name: netbox
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: {{ include "netbox.fullname" . }}-env
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_DB_PASS
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_SECRET_KEY
+            - name: SUPERUSER_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_API_TOKEN
+            - name: SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_ADMIN_PASS
+            - name: SUPERUSER_NAME
+              value: {{ .Values.app.superuser.name | quote }}
+            - name: SUPERUSER_EMAIL
+              value: {{ .Values.app.superuser.email | quote }}
+            - name: SKIP_SUPERUSER
+              value: "false"
+          volumeMounts:
+            - name: extra-config
+              mountPath: /etc/netbox/config/extra.py
+              subPath: extra.py
+              readOnly: true
+      volumes:
+        - name: extra-config
+          configMap:
+            name: {{ include "netbox.fullname" . }}-extra-config
+        - name: seed-script
+          configMap:
+            name: {{ include "netbox.fullname" . }}-seed-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "netbox.fullname" . }}
+  labels:
+    app.kubernetes.io/name: netbox
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.app.service.port }}
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: netbox
+    app.kubernetes.io/instance: {{ .Release.Name }}
