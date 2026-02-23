@@ -10,3 +10,7 @@ data:
   POSTGRESQL_DB: {{ .Values.db.database | quote }}
   ELASTICSEARCH_HOST: "{{ include "zammad.fullname" . }}-elasticsearch"
   ELASTICSEARCH_PORT: "9200"
+  ZAMMAD_RAILS_HOST: "127.0.0.1"
+  ZAMMAD_RAILS_PORT: "3000"
+  ZAMMAD_WEBSOCKET_HOST: "127.0.0.1"
+  ZAMMAD_WEBSOCKET_PORT: "6042"
