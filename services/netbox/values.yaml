@@ -37,6 +37,6 @@ app:
     }
 secrets:
   NETBOX_DB_PASS: "netboxpassword"
-  NETBOX_SECRET_KEY: "super-secret-key-at-least-50-chars-long-1234567890123"
+  NETBOX_SECRET_KEY: "super-secret-key-that-is-definitely-over-fifty-characters-long-1234567890"
   NETBOX_API_TOKEN: "0123456789abcdef0123456789abcdef01234567"
   NETBOX_ADMIN_PASS: "admin"

@@ -17,6 +17,33 @@ spec:
         app.kubernetes.io/name: netbox-worker
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      initContainers:
+        - name: wait-for-migrations
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          command:
+            - /opt/netbox/docker-entrypoint.sh
+            - /bin/bash
+            - -c
+            - "until /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py showmigrations core | grep '\\[X\\]' > /dev/null; do echo 'Waiting for core migrations...'; sleep 5; done"
+          envFrom:
+            - configMapRef:
+                name: {{ include "netbox.fullname" . }}-env
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_DB_PASS
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_SECRET_KEY
+          volumeMounts:
+            - name: extra-config
+              mountPath: /etc/netbox/config/extra.py
+              subPath: extra.py
+              readOnly: true
       containers:
         - name: worker
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
