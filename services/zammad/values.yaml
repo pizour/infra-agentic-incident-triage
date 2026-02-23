@@ -23,8 +23,8 @@ redis:
 
 elasticsearch:
   image:
-    repository: zammad/zammad-elasticsearch
-    tag: 7.17.10
+    repository: elasticsearch
+    tag: 8.11.3
     pullPolicy: IfNotPresent
   service:
     port: 9200
