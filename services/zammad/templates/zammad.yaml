@@ -18,6 +18,11 @@ spec:
         app.kubernetes.io/name: zammad
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      hostAliases:
+      - ip: "127.0.0.1"
+        hostnames:
+        - "zammad-railsserver"
+        - "zammad-websocket"
       initContainers:
         - name: fix-permissions
           image: busybox
