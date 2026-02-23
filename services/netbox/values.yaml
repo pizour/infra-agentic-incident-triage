@@ -33,7 +33,7 @@ app:
     email: "admin@example.com"
   extraPy: |
     API_TOKEN_PEPPERS = {
-        'v1': 'NetBoxLabsSeedPepper1234567890',
+        1: 'NetBoxLabsSeedPepper1234567890',
     }
 secrets:
   NETBOX_DB_PASS: "netboxpassword"
