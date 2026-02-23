@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   registry: us-central1-docker.pkg.dev
-  project: my-project
+  project: ai-incident-triage
   repository: gke-artifacts-dev
   name: linux-mcp-server
   pullPolicy: IfNotPresent
