@@ -1,0 +1,80 @@
+replicaCount: 1
+
+image:
+  registry: us-central1-docker.pkg.dev
+  project: my-project
+  repository: gke-artifacts-dev
+  name: ai-agent
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+env:
+  # Define non-sensitive environment variables
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
+  PHOENIX_CLIENT_HEADERS: "api_key=unused"
+
+# Define secrets that will be created as a Kubernetes Secret
+secrets:
+  GEMINI_API_KEY: "no-key-yet"
+  GOOGLE_API_KEY: "no-key-yet"
+  APP_API_KEY: "no-key-yet"
+  MCP_API_KEY: "no-key-yet"
+  NETBOX_MCP_API_KEY: "no-key-yet"

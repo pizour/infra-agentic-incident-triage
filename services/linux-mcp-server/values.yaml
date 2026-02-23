@@ -1,0 +1,24 @@
+replicaCount: 1
+
+image:
+  registry: us-central1-docker.pkg.dev
+  project: my-project
+  repository: gke-artifacts-dev
+  name: linux-mcp-server
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 8001
+
+resources: {}
+
+autoscaling:
+  enabled: false
+
+secrets:
+  MCP_API_KEY: ""

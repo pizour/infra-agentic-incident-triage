@@ -1,0 +1,6 @@
+apiVersion: v2
+name: zammad
+description: A Helm chart for Zammad Helpdesk with its dependencies
+type: application
+version: 0.1.0
+appVersion: "latest"

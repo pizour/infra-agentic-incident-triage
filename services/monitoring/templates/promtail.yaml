@@ -1,0 +1,46 @@
+{{- if .Values.promtail.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "monitoring.fullname" . }}-promtail
+  labels:
+    app.kubernetes.io/name: promtail
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: promtail
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: promtail
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: promtail
+          image: "{{ .Values.promtail.image.repository }}:{{ .Values.promtail.image.tag }}"
+          imagePullPolicy: {{ .Values.promtail.image.pullPolicy }}
+          args:
+            - "-config.file=/etc/promtail/config.yml"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/promtail/config.yml
+              subPath: config.yml
+            - name: var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: var-lib-docker-containers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ include "monitoring.fullname" . }}-promtail
+        - name: var-log
+          hostPath:
+            path: /var/log
+        - name: var-lib-docker-containers
+          hostPath:
+            path: /var/lib/docker/containers
+{{- end }}

@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ollama.fullname" . }}-ollama
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  serviceName: {{ include "ollama.fullname" . }}-ollama
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ollama
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ollama
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- with .Values.ollama.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ollama.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ollama
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
+          imagePullPolicy: {{ .Values.ollama.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args: ["ollama serve & sleep 5 && ollama pull {{ .Values.ollama.model }} && wait"]
+          ports:
+            - containerPort: 11434
+          env:
+            - name: OLLAMA_HOST
+              value: "0.0.0.0"
+          resources:
+            requests:
+              nvidia.com/gpu: {{ .Values.ollama.resources.limits.nvidia_com_gpu | default 1 }}
+            limits:
+              nvidia.com/gpu: {{ .Values.ollama.resources.limits.nvidia_com_gpu | default 1 }}
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+  volumeClaimTemplates:
+    - metadata:
+        name: ollama-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        {{- if .Values.ollama.persistence.storageClass }}
+        storageClassName: {{ .Values.ollama.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.ollama.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ollama.fullname" . }}-ollama
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.ollama.service.port }}
+      targetPort: 11434
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/instance: {{ .Release.Name }}

@@ -1,0 +1,47 @@
+fullnameOverride: "zammad"
+
+db:
+  image:
+    repository: postgres
+    tag: 15-alpine
+    pullPolicy: IfNotPresent
+  user: zammad
+  database: zammad
+  service:
+    port: 5432
+  persistence:
+    size: 50Gi
+    storageClass: ""
+
+redis:
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  service:
+    port: 6379
+
+elasticsearch:
+  image:
+    repository: elasticsearch
+    tag: 7.17.10
+    pullPolicy: IfNotPresent
+  service:
+    port: 9200
+  persistence:
+    size: 20Gi
+    storageClass: ""
+
+app:
+  image:
+    repository: zammad/zammad-docker-compose
+    tag: zammad-latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  persistence:
+    size: 50Gi
+    storageClass: ""
+
+secrets:
+  ZAMMAD_DB_PASS: "zammadpassword"

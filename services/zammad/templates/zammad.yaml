@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "zammad.fullname" . }}
+  labels:
+    app.kubernetes.io/name: zammad
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  serviceName: {{ include "zammad.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zammad
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zammad
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      initContainers:
+        - name: zammad-init
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          command: ["zammad-init"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "zammad.fullname" . }}-env
+          env:
+            - name: POSTGRESQL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zammad.fullname" . }}-secrets
+                  key: ZAMMAD_DB_PASS
+          volumeMounts:
+            - name: zammad-data
+              mountPath: /opt/zammad
+      containers:
+        - name: zammad-railsserver
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          command: ["zammad-railsserver"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "zammad.fullname" . }}-env
+          env:
+            - name: POSTGRESQL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zammad.fullname" . }}-secrets
+                  key: ZAMMAD_DB_PASS
+          volumeMounts:
+            - name: zammad-data
+              mountPath: /opt/zammad
+
+        - name: zammad-scheduler
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          command: ["zammad-scheduler"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "zammad.fullname" . }}-env
+          env:
+            - name: POSTGRESQL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zammad.fullname" . }}-secrets
+                  key: ZAMMAD_DB_PASS
+          volumeMounts:
+            - name: zammad-data
+              mountPath: /opt/zammad
+
+        - name: zammad-websocket
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          command: ["zammad-websocket"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "zammad.fullname" . }}-env
+          env:
+            - name: POSTGRESQL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zammad.fullname" . }}-secrets
+                  key: ZAMMAD_DB_PASS
+          volumeMounts:
+            - name: zammad-data
+              mountPath: /opt/zammad
+
+        - name: zammad-nginx
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          command: ["zammad-nginx"]
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: {{ include "zammad.fullname" . }}-env
+          env:
+            - name: POSTGRESQL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zammad.fullname" . }}-secrets
+                  key: ZAMMAD_DB_PASS
+          volumeMounts:
+            - name: zammad-data
+              mountPath: /opt/zammad
+  volumeClaimTemplates:
+    - metadata:
+        name: zammad-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        {{- if .Values.app.persistence.storageClass }}
+        storageClassName: {{ .Values.app.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.app.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zammad.fullname" . }}
+  labels:
+    app.kubernetes.io/name: zammad
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.app.service.port }}
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: zammad
+    app.kubernetes.io/instance: {{ .Release.Name }}

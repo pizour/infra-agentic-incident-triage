@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "netbox-mcp-server.fullname" . }}
+  labels:
+    {{- include "netbox-mcp-server.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "netbox-mcp-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "netbox-mcp-server.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.registry }}/{{ .Values.image.project }}/{{ .Values.image.repository }}/{{ .Values.image.name }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8002
+              protocol: TCP
+          env:
+            - name: NETBOX_URL
+              value: {{ .Values.env.NETBOX_URL | quote }}
+            - name: NETBOX_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox-mcp-server.fullname" . }}-secrets
+                  key: NETBOX_API_TOKEN
+            - name: NETBOX_MCP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox-mcp-server.fullname" . }}-secrets
+                  key: NETBOX_MCP_API_KEY
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

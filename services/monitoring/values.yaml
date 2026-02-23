@@ -1,0 +1,46 @@
+phoenix:
+  enabled: true
+  image:
+    repository: arizephoenix/phoenix
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 6006
+
+prometheus:
+  enabled: true
+  image:
+    repository: prom/prometheus
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 9090
+
+grafana:
+  enabled: true
+  image:
+    repository: grafana/grafana
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 3000
+  secrets:
+    GF_SECURITY_ADMIN_PASSWORD: "admin"
+
+loki:
+  enabled: true
+  image:
+    repository: grafana/loki
+    tag: 3.0.0
+    pullPolicy: IfNotPresent
+  service:
+    port: 3100
+
+promtail:
+  enabled: true
+  image:
+    repository: grafana/promtail
+    tag: 3.0.0
+    pullPolicy: IfNotPresent
+
+fullnameOverride: "monitoring"

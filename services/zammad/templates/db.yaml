@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "zammad.fullname" . }}-db
+  labels:
+    app.kubernetes.io/name: zammad-db
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  serviceName: {{ include "zammad.fullname" . }}-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zammad-db
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zammad-db
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: db
+          image: "{{ .Values.db.image.repository }}:{{ .Values.db.image.tag }}"
+          imagePullPolicy: {{ .Values.db.image.pullPolicy }}
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.db.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.db.database | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zammad.fullname" . }}-secrets
+                  key: ZAMMAD_DB_PASS
+          volumeMounts:
+            - name: db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: db-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        {{- if .Values.db.persistence.storageClass }}
+        storageClassName: {{ .Values.db.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.db.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zammad.fullname" . }}-db
+  labels:
+    app.kubernetes.io/name: zammad-db
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.db.service.port }}
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app.kubernetes.io/name: zammad-db
+    app.kubernetes.io/instance: {{ .Release.Name }}

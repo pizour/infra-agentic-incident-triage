@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-prometheus
+data:
+  prometheus.yml: |-
+{{ .Files.Get "prometheus.yml" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-loki
+data:
+  local-config.yaml: |-
+{{ .Files.Get "loki-config.yaml" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-promtail
+data:
+  config.yml: |-
+{{ .Files.Get "promtail-config.yaml" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-grafana-provisioning-datasources
+data:
+{{ (.Files.Glob "provisioning/datasources/*").AsConfig | indent 2 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-grafana-provisioning-dashboards
+data:
+{{ (.Files.Glob "provisioning/dashboards/*").AsConfig | indent 2 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "monitoring.fullname" . }}-grafana-dashboards
+data:
+{{ (.Files.Glob "dashboards/*").AsConfig | indent 2 }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "monitoring.fullname" . }}-grafana-secrets
+type: Opaque
+data:
+  GF_SECURITY_ADMIN_PASSWORD: {{ .Values.grafana.secrets.GF_SECURITY_ADMIN_PASSWORD | b64enc | quote }}

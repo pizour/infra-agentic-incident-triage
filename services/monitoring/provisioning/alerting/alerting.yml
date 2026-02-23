@@ -1,0 +1,62 @@
+apiVersion: 1
+
+contactPoints:
+  - name: "FastAPI Webhook"
+    receivers:
+      - uid: "fastapi-webhook"
+        type: "webhook"
+        settings:
+          url: "http://app:8000/webhook"
+          httpMethod: "POST"
+
+policies:
+  - orgId: 1
+    receiver: "FastAPI Webhook"
+    group_by: ["alertname"]
+
+groups:
+  - orgId: 1
+    name: "SSH Security"
+    folder: "Security"
+    interval: "10s"
+    rules:
+      - uid: "ssh-failed-login"
+        title: "Failed SSH Login Attempt"
+        condition: "B"
+        data:
+          - refId: "A"
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "Loki"
+            model:
+              expr: 'count_over_time({job="varlogs"} |= "Failed password" [30s])'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: "A"
+          - refId: "B"
+            datasourceUid: "-100"
+            model:
+              expression: "A"
+              refId: "B"
+              type: "threshold"
+              conditions:
+                - evaluator:
+                    params: [4]
+                    type: "gt"
+                  operator:
+                    type: "and"
+                  query:
+                    params: ["B"]
+                  reducer:
+                    params: []
+                    type: "last"
+                  type: "query"
+        noDataState: "NoData"
+        execErrState: "Error"
+        for: "0m"
+        annotations:
+          summary: "Detected failed SSH login attempt"
+          description: 'Detected 5 or more "Failed password" log entries within 30 seconds.'
+        labels:
+          severity: "critical"

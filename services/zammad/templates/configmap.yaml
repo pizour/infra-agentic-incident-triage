@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zammad.fullname" . }}-env
+data:
+  REDIS_URL: "redis://{{ include "zammad.fullname" . }}-redis:6379/0"
+  POSTGRESQL_HOST: "{{ include "zammad.fullname" . }}-db"
+  POSTGRESQL_PORT: "5432"
+  POSTGRESQL_USER: {{ .Values.db.user | quote }}
+  POSTGRESQL_DB: {{ .Values.db.database | quote }}
+  ELASTICSEARCH_HOST: "{{ include "zammad.fullname" . }}-elasticsearch"
+  ELASTICSEARCH_PORT: "9200"
