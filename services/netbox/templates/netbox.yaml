@@ -23,11 +23,11 @@ spec:
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
           command:
             - /opt/netbox/docker-entrypoint.sh
-            - /opt/netbox/venv/bin/python
-            - /opt/netbox/netbox/manage.py
-            - shell
+            - /bin/bash
             - -c
-            - "exec(open('/seed/seed.py').read())"
+            - |
+              /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py migrate && \
+              /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py shell -c "exec(open('/seed/seed.py').read())"
           envFrom:
             - configMapRef:
                 name: {{ include "netbox.fullname" . }}-env
@@ -37,6 +37,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "netbox.fullname" . }}-secrets
                   key: NETBOX_DB_PASS
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "netbox.fullname" . }}-secrets
+                  key: NETBOX_SECRET_KEY
             - name: SUPERUSER_API_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -52,6 +57,10 @@ spec:
           volumeMounts:
             - name: seed-script
               mountPath: /seed
+            - name: extra-config
+              mountPath: /etc/netbox/config/extra.py
+              subPath: extra.py
+              readOnly: true
       containers:
         - name: netbox
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
