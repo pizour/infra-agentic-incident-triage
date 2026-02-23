@@ -194,3 +194,114 @@ def create_node_pool(
         'node_pool': node_pool,
         'node_pool_name': node_pool.name,
     }
+
+
+def create_gpu_node_pool(
+    cluster,
+    cluster_name: str,
+    node_pool_name: str,
+    machine_type: str,
+    accelerator_type: str,
+    accelerator_count: int,
+    region: str,
+    min_node_count: int,
+    max_node_count: int,
+    disk_size_gb: int,
+    service_account_email: str,
+    labels: dict,
+) -> dict:
+    """
+    Create GKE GPU node pool with autoscaling and specific taints
+    
+    Args:
+        cluster: Cluster resource object
+        cluster_name: Cluster name
+        node_pool_name: Name of the node pool
+        machine_type: Machine type (e.g., g2-standard-8)
+        accelerator_type: GPU accelerator type (e.g., nvidia-l4)
+        accelerator_count: Number of GPUs per node
+        region: GCP region
+        min_node_count: Minimum number of nodes
+        max_node_count: Maximum number of nodes
+        disk_size_gb: Disk size in GB
+        service_account_email: Service account email
+        labels: Labels for nodes
+    
+    Returns:
+        Dictionary containing node pool reference
+    """
+    
+    # Merge specific GPU labels with standard ones
+    gpu_labels = {
+        **labels,
+        'gpu-node': 'true',
+    }
+    
+    node_pool = gcp.container.NodePool(
+        node_pool_name,
+        name=node_pool_name,
+        cluster=cluster.id,
+        location=region,
+        
+        # Scaling
+        autoscaling=gcp.container.NodePoolAutoscalingArgs(
+            min_node_count=min_node_count,
+            max_node_count=max_node_count,
+        ),
+        
+        # Node configuration
+        node_config=gcp.container.NodePoolNodeConfigArgs(
+            machine_type=machine_type,
+            disk_size_gb=disk_size_gb,
+            disk_type='pd-standard',
+            service_account=service_account_email,
+            oauth_scopes=[
+                'https://www.googleapis.com/auth/cloud-platform',
+            ],
+            metadata={
+                'disable-legacy-endpoints': 'true',
+            },
+            labels=gpu_labels,
+            tags=['gke-node', 'gpu-node', cluster_name],
+            
+            # GPU specifics
+            guest_accelerators=[gcp.container.NodePoolNodeConfigGuestAcceleratorArgs(
+                type=accelerator_type,
+                count=accelerator_count,
+                # Required for L4 and newer on GKE, typically handled by driver installer daemonset
+                gpu_driver_installation_config=gcp.container.NodePoolNodeConfigGuestAcceleratorGpuDriverInstallationConfigArgs(
+                    gpu_driver_version="LATEST"
+                )
+            )],
+            taints=[gcp.container.NodePoolNodeConfigTaintArgs(
+                key="nvidia.com/gpu",
+                value="present",
+                effect="NO_SCHEDULE",
+            )],
+            
+            shielded_instance_config=gcp.container.NodePoolNodeConfigShieldedInstanceConfigArgs(
+                enable_secure_boot=True,
+                enable_integrity_monitoring=True,
+            ),
+            workload_metadata_config=gcp.container.NodePoolNodeConfigWorkloadMetadataConfigArgs(
+                mode='GKE_METADATA',
+            ),
+        ),
+        
+        # Management
+        management=gcp.container.NodePoolManagementArgs(
+            auto_repair=True,
+            auto_upgrade=True,
+        ),
+        
+        opts=pulumi.ResourceOptions(
+            depends_on=[cluster],
+            ignore_changes=['initial_node_count', 'node_count', 'cluster', 'node_config'],
+        ),
+    )
+    
+    return {
+        'node_pool': node_pool,
+        'node_pool_name': node_pool.name,
+    }
+

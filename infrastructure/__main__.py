@@ -6,7 +6,7 @@ with networking, IAM, and cluster configuration.
 """
 
 import pulumi
-from modules import create_network, create_gke_cluster, create_node_pool, create_service_accounts, create_artifact_registry, create_public_ip
+from modules import create_network, create_gke_cluster, create_node_pool, create_gpu_node_pool, create_service_accounts, create_artifact_registry, create_public_ip, create_argocd
 import config
 
 def main():
@@ -67,6 +67,23 @@ def main():
         labels=config.labels,
     )
     
+    # 4.5 Create GPU Node Pool
+    pulumi.info("Creating GPU node pool...")
+    gpu_node_pool_resources = create_gpu_node_pool(
+        cluster=cluster_resources['cluster'],
+        cluster_name=config.cluster_name,
+        node_pool_name=config.gpu_node_pool_name,
+        machine_type=config.gpu_machine_type,
+        accelerator_type=config.gpu_accelerator_type,
+        accelerator_count=config.gpu_accelerator_count,
+        region=config.gke_zone,
+        min_node_count=config.gpu_min_node_count,
+        max_node_count=config.gpu_max_node_count,
+        disk_size_gb=config.gpu_disk_size_gb,
+        service_account_email=iam_resources['gke_service_account'].email,
+        labels=config.labels,
+    )
+    
     # 5. Create Artifact Registry
     pulumi.info("Creating artifact registry...")
     artifact_registry_resources = create_artifact_registry(
@@ -88,6 +105,14 @@ def main():
         labels=config.labels,
     )
     
+    # 7. Create ArgoCD via Helm
+    pulumi.info("Deploying ArgoCD...")
+    argocd_resources = create_argocd(
+        cluster_name=cluster_resources['cluster_name'],
+        endpoint=cluster_resources['endpoint'],
+        ca_certificate=cluster_resources['ca_certificate']
+    )
+    
     # Stack Outputs
     pulumi.export('cluster_name', cluster_resources['cluster_name'])
     pulumi.export('cluster_endpoint', cluster_resources['endpoint'])
@@ -95,6 +120,7 @@ def main():
     pulumi.export('subnet_name', network_resources['subnet'].name)
     pulumi.export('artifact_registry_url', artifact_registry_resources['repository_url'])
     pulumi.export('gateway_ip_address', public_ip_resources['ip_address'])
+    pulumi.export('argocd_namespace', argocd_resources['namespace'])
     
     # Export kubeconfig connection details
     pulumi.export('kubeconfig', pulumi.Output.concat(
@@ -108,9 +134,11 @@ def main():
         'network': network_resources,
         'cluster': cluster_resources,
         'node_pool': node_pool_resources,
+        'gpu_node_pool': gpu_node_pool_resources,
         'iam': iam_resources,
         'artifact_registry': artifact_registry_resources,
         'public_ip': public_ip_resources,
+        'argocd': argocd_resources,
     }
 
 if __name__ == '__main__':

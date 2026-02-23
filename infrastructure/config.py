@@ -34,6 +34,15 @@ min_node_count = gke_config.get_int('min_node_count') or 2
 max_node_count = gke_config.get_int('max_node_count') or 10
 disk_size_gb = gke_config.get_int('disk_size_gb') or 100
 
+# GPU Node Pool Settings
+gpu_node_pool_name = gke_config.get('gpu_node_pool_name') or f'gpu-pool-{environment}'
+gpu_machine_type = gke_config.get('gpu_machine_type') or 'g2-standard-8'
+gpu_accelerator_type = gke_config.get('gpu_accelerator_type') or 'nvidia-l4'
+gpu_accelerator_count = gke_config.get_int('gpu_accelerator_count') or 1
+gpu_min_node_count = gke_config.get_int('gpu_min_node_count') or 0
+gpu_max_node_count = gke_config.get_int('gpu_max_node_count') or 2
+gpu_disk_size_gb = gke_config.get_int('gpu_disk_size_gb') or 100
+
 # Labels and Tags
 labels = {
     'environment': environment,
