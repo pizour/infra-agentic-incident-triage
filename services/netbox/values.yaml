@@ -35,6 +35,13 @@ app:
     API_TOKEN_PEPPERS = {
         1: 'NetBoxLabsSeedPepper12345678901234567890123456789012',
     }
+    ALLOWED_HOSTS = ['*']
+    CSRF_TRUSTED_ORIGINS = [
+        'http://localhost:8082',
+        'http://127.0.0.1:8082',
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+    ]
 secrets:
   NETBOX_DB_PASS: "netboxpassword"
   NETBOX_SECRET_KEY: "super-secret-key-that-is-definitely-over-fifty-characters-long-1234567890"
