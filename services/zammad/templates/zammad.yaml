@@ -19,10 +19,16 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       initContainers:
+        - name: fix-permissions
+          image: busybox
+          command: ["sh", "-c", "chown -R 1000:1000 /opt/zammad"]
+          volumeMounts:
+            - name: zammad-data
+              mountPath: /opt/zammad
         - name: zammad-init
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
-          command: ["zammad-init"]
+          args: ["zammad-init"]
           envFrom:
             - configMapRef:
                 name: {{ include "zammad.fullname" . }}-env
@@ -39,7 +45,7 @@ spec:
         - name: zammad-railsserver
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
-          command: ["zammad-railsserver"]
+          args: ["zammad-railsserver"]
           envFrom:
             - configMapRef:
                 name: {{ include "zammad.fullname" . }}-env
@@ -56,7 +62,7 @@ spec:
         - name: zammad-scheduler
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
-          command: ["zammad-scheduler"]
+          args: ["zammad-scheduler"]
           envFrom:
             - configMapRef:
                 name: {{ include "zammad.fullname" . }}-env
@@ -73,7 +79,7 @@ spec:
         - name: zammad-websocket
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
-          command: ["zammad-websocket"]
+          args: ["zammad-websocket"]
           envFrom:
             - configMapRef:
                 name: {{ include "zammad.fullname" . }}-env
@@ -90,7 +96,7 @@ spec:
         - name: zammad-nginx
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
-          command: ["zammad-nginx"]
+          args: ["zammad-nginx"]
           ports:
             - containerPort: 8080
           envFrom:
