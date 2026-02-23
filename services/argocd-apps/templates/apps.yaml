@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ai-agent
+  namespace: argocd
+spec:
+  description: AI Agent GitOps Project
+  sourceRepos:
+    - "*"
+  destinations:
+    - namespace: "*"
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+---
+{{- range .Values.applications }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .name }}
+  namespace: argocd
+spec:
+  project: ai-agent
+  source:
+    repoURL: {{ $.Values.repoURL | quote }}
+    path: {{ .path | quote }}
+    targetRevision: {{ $.Values.targetRevision | quote }}
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ .namespace | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- if not (eq .name (last $.Values.applications).name) }}
+---
+{{- end }}
+{{- end }}
