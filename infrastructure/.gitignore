@@ -1,0 +1,34 @@
+# Pulumi
+.pulumi/
+Pulumi.*.yaml.bak
+*.pyc
+__pycache__/
+.env
+
+# Python
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# GCP/Credentials
+*.json
+~/.config/gcloud/
+
+# Logs
+*.log
+
+# Custom
+run.sh
