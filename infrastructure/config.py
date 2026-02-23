@@ -39,15 +39,17 @@ gpu_node_pool_name = gke_config.get('gpu_node_pool_name') or f'gpu-pool-{environ
 gpu_machine_type = gke_config.get('gpu_machine_type') or 'g2-standard-8'
 gpu_accelerator_type = gke_config.get('gpu_accelerator_type') or 'nvidia-l4'
 gpu_accelerator_count = gke_config.get_int('gpu_accelerator_count') or 1
-gpu_min_node_count = gke_config.get_int('gpu_min_node_count') or 0
-gpu_max_node_count = gke_config.get_int('gpu_max_node_count') or 2
+gpu_min_node_count = gke_config.get_int('gpu_min_node_count') or 1
+gpu_max_node_count = gke_config.get_int('gpu_max_node_count') or 1
 gpu_disk_size_gb = gke_config.get_int('gpu_disk_size_gb') or 100
 
 # ArgoCD Settings
 argocd_config = pulumi.Config('argocd')
 argocd_chart_version = argocd_config.get('chart_version') or '6.7.11'
 argocd_chart_repo = argocd_config.get('chart_repo') or 'https://argoproj.github.io/argo-helm'
-argocd_app_of_apps_path = argocd_config.get('app_of_apps_path') or '../services/argocd-apps'
+import os
+...
+argocd_app_of_apps_path = argocd_config.get('app_of_apps_path') or os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services', 'argocd-apps'))
 argocd_namespace = argocd_config.get('namespace') or 'argocd'
 
 # Labels and Tags
