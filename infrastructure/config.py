@@ -37,7 +37,7 @@ disk_size_gb = gke_config.get_int('disk_size_gb') or 100
 # GPU Node Pool Settings
 gpu_node_pool_name = gke_config.get('gpu_node_pool_name') or f't4-pool-{environment}'
 gpu_machine_type = gke_config.get('gpu_machine_type') or 'n1-standard-4'
-gpu_accelerator_type = gke_config.get('gpu_accelerator_type') or 'nvidia-t4'
+gpu_accelerator_type = gke_config.get('gpu_accelerator_type') or 'nvidia-tesla-t4'
 gpu_accelerator_count = gke_config.get_int('gpu_accelerator_count') or 1
 gpu_min_node_count = gke_config.get_int('gpu_min_node_count') or 1
 gpu_max_node_count = gke_config.get_int('gpu_max_node_count') or 1
