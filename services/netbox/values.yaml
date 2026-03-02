@@ -11,7 +11,7 @@ db:
     port: 5432
   persistence:
     size: 20Gi
-    storageClass: ""
+    storageClass: "standard"
 
 redis:
   image:

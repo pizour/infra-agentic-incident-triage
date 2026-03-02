@@ -11,7 +11,7 @@ db:
     port: 5432
   persistence:
     size: 50Gi
-    storageClass: ""
+    storageClass: "standard"
 
 redis:
   image:
@@ -30,7 +30,7 @@ elasticsearch:
     port: 9200
   persistence:
     size: 20Gi
-    storageClass: ""
+    storageClass: "standard"
 
 app:
   image:
@@ -41,7 +41,7 @@ app:
     port: 8080
   persistence:
     size: 50Gi
-    storageClass: ""
+    storageClass: "standard"
 
 secrets:
   ZAMMAD_DB_PASS: "zammadpassword"
