@@ -6,24 +6,24 @@ targetRevision: "main"
 
 # Definitions for all applications to be deployed via GitOps
 applications:
-  - name: monitoring
-    path: services/monitoring
-    namespace: monitoring
-  - name: netbox
-    path: services/netbox
-    namespace: netbox
-  - name: zammad
-    path: services/zammad
-    namespace: zammad
   - name: ollama
     path: services/ollama
     namespace: ollama
-  - name: linux-mcp-server
-    path: services/linux-mcp-server
-    namespace: ai-agent
-  - name: netbox-mcp-server
-    path: services/netbox-mcp-server
-    namespace: ai-agent
-  - name: ai-agent
-    path: services/ai-agent
-    namespace: ai-agent
+  # - name: monitoring
+  #   path: services/monitoring
+  #   namespace: monitoring
+  # - name: netbox
+  #   path: services/netbox
+  #   namespace: netbox
+  # - name: zammad
+  #   path: services/zammad
+  #   namespace: zammad
+  # - name: linux-mcp-server
+  #   path: services/linux-mcp-server
+  #   namespace: ai-agent
+  # - name: netbox-mcp-server
+  #   path: services/netbox-mcp-server
+  #   namespace: ai-agent
+  # - name: ai-agent
+  #   path: services/ai-agent
+  #   namespace: ai-agent
