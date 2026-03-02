@@ -7,7 +7,7 @@ network_config = pulumi.Config('network')
 
 # GCP Settings
 gcp_project = gcp_config.require('project')
-gcp_region = gcp_config.get('region') or 'us-central1'
+gcp_region = gcp_config.get('region') or 'europe-west4'
 gcp_zone = f"{gcp_region}-a"
 
 # Environment
