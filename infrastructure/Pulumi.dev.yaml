@@ -1,12 +1,12 @@
 config:
   gcp:project: ai-incident-triage
-  gcp:region: us-central1
+  gcp:region: europe-west4
   network:name: gke-network-dev
   network:subnet: gke-subnet-dev
   network:cidr: 10.0.0.0/20
   network:pods_cidr: 10.4.0.0/14
   network:services_cidr: 10.0.16.0/20
-  gke:zone: us-central1-a
+  gke:zone: europe-west4-a
   gke:cluster_name: gke-cluster-dev
   gke:version: 'REGULAR'
   gke:enable_network_policy: 'true'
