@@ -42,6 +42,19 @@ app = FastAPI(title="AI Agent API (Ollama/Llama)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+GUARDRAILS_URL = os.getenv("GUARDRAILS_URL", "http://guardrails.ai-agent.svc.cluster.local:8080")
+
+async def guardrails_check(message: str) -> str:
+    """Send message through the guardrails service. Falls back to original on error."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(f"{GUARDRAILS_URL}/check", json={"message": message})
+            if resp.status_code == 200:
+                return resp.json().get("content", message)
+    except Exception as e:
+        print(f"Guardrails service unreachable, passing through: {e}")
+    return message
+
 # --- MCP Client Setup ---
 from mcp import ClientSession
 from mcp.client.sse import sse_client
@@ -109,9 +122,10 @@ async def health_check():
 
 @app.post("/agent", response_model=AgentResponse)
 async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key)):
-    """Standard agent endpoint for manual queries."""
+    """Standard agent endpoint for manual queries, with guardrails."""
     try:
-        result = await agent.run(request.prompt)
+        safe_prompt = await guardrails_check(request.prompt)
+        result = await agent.run(safe_prompt)
         return AgentResponse(result=str(result.output))
     except Exception as e:
         print(f"Error running agent: {e}")
@@ -275,8 +289,10 @@ async def handle_alert(request: Request, payload: dict):
         try:
             result = await agent.run(prompt)
             analysis = str(result.output)
-            print(f"INVESTIGATION COMPLETE: {analysis}")
-            return {"status": "investigated", "hostname": hostname, "analysis": analysis}
+            # Guard final output via guardrails service
+            guarded_analysis = await guardrails_check(f"Verified investigation: {analysis}")
+            print(f"INVESTIGATION COMPLETE: {guarded_analysis}")
+            return {"status": "investigated", "hostname": hostname, "analysis": guarded_analysis}
         except Exception as e:
             print(f"Error in investigation: {e}")
             return {"status": "error", "message": str(e)}

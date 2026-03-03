@@ -31,7 +31,7 @@ spec:
           image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
           imagePullPolicy: {{ .Values.ollama.image.pullPolicy }}
           command: ["/bin/sh", "-c"]
-          args: ["ollama serve & sleep 5 && ollama pull {{ .Values.ollama.model }} && wait"]
+          args: ["ollama serve & sleep 5 && {{ range .Values.ollama.models }}ollama pull {{ . }} && {{ end }}wait"]
           ports:
             - containerPort: 11434
           env:

@@ -27,3 +27,6 @@ applications:
   - name: ai-agent
     path: services/ai-agent
     namespace: ai-agent
+  - name: guardrails
+    path: services/guardrails
+    namespace: ai-agent
