@@ -24,6 +24,14 @@ spec:
           imagePullPolicy: {{ .Values.phoenix.image.pullPolicy }}
           ports:
             - containerPort: 6006
+          {{- with .Values.phoenix.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.phoenix.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service

@@ -6,6 +6,16 @@ phoenix:
     pullPolicy: IfNotPresent
   service:
     port: 6006
+  env:
+    - name: PHOENIX_ALLOW_EXTERNAL_RESOURCES
+      value: "false"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
 
 prometheus:
   enabled: true
