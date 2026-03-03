@@ -8,7 +8,7 @@ ollama:
   persistence:
     size: 50Gi
     storageClass: ""
-  model: "llama3.1:8b-q4_0"
+  model: "llama3.1:8b"
   resources:
     limits:
       nvidia.com/gpu: 1
