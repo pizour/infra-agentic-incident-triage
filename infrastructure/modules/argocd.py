@@ -76,12 +76,34 @@ users:
         opts=pulumi.ResourceOptions(provider=k8s_provider, depends_on=[argocd_ns])
     )
 
-    # Deploy the ArgoCD App of Apps Helm chart
-    argocd_apps_release = kubernetes.helm.v3.Release(
+    # Replace Helm Release with ArgoCD Application for self-management
+    argocd_apps = kubernetes.apiextensions.CustomResource(
         "argocd-apps",
-        name="argocd-apps",
-        chart=app_of_apps_path,
-        namespace=argocd_ns.metadata.name,
+        api_version="argoproj.io/v1alpha1",
+        kind="Application",
+        metadata={
+            "name": "argocd-apps",
+            "namespace": argocd_ns.metadata.name,
+        },
+        spec={
+            "project": "default",
+            "source": {
+                "repoURL": "https://github.com/pizour/infra-agentic-incident-triage.git",
+                "path": "services/argocd-apps",
+                "targetRevision": "main",
+            },
+            "destination": {
+                "server": "https://kubernetes.default.svc",
+                "namespace": argocd_ns.metadata.name,
+            },
+            "syncPolicy": {
+                "automated": {
+                    "prune": True,
+                    "selfHeal": True,
+                },
+                "syncOptions": ["CreateNamespace=true"]
+            },
+        },
         opts=pulumi.ResourceOptions(provider=k8s_provider, depends_on=[argocd_chart])
     )
 
