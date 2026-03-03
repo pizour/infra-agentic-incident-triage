@@ -5,7 +5,7 @@ from nemoguardrails import LLMRails, RailsConfig
 
 app = FastAPI(title="NeMo Guardrails Service")
 
-rails_config = RailsConfig.from_path("/app/guardrails")
+rails_config = RailsConfig.from_path("/app")
 rails = LLMRails(rails_config)
 
 
