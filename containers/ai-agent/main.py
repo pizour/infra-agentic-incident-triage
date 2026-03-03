@@ -9,7 +9,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
+from openinference.instrumentation.openai import OpenAIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 
 # Initialize TracerProvider
@@ -21,8 +22,9 @@ endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://phoenix:6006/v1/trac
 exporter = OTLPSpanExporter(endpoint=endpoint)
 provider.add_span_processor(BatchSpanProcessor(exporter))
 
-# Add OpenInferenceSpanProcessor for Pydantic AI
-provider.add_span_processor(OpenInferenceSpanProcessor())
+# Instrument OpenAI calls (this captures LLM inputs/outputs sent to Ollama via OpenAIProvider)
+OpenAIInstrumentor().instrument()
+HTTPXClientInstrumentor().instrument()
 # ---------------------------------------------
 
 from fastapi import FastAPI, HTTPException, Security, status, Request
@@ -104,9 +106,8 @@ model = OpenAIChatModel(model_name, provider=ollama_provider)
 agent = Agent(
     model,
     system_prompt=(
-        "You are a security-focused AI assistant. "
-        "When analyzing alerts, look for patterns (brute force, etc.) and suggest specific technical recommendations. "
-        "Be concise, technical, and proactive."
+        "You are a strict, concise security AI. "
+        "You MUST call tools to investigate alerts. DO NOT output conversational plans or explain steps."
     ),
 )
 
@@ -273,22 +274,26 @@ async def handle_alert(request: Request, payload: dict):
             or "unknown"
         )
         
-        # INVESTIGATION PROMPT with NetBox lookup
         prompt = (
-            f"ALERT RECEIVED on host '{hostname}': {alert_desc}. "
-            "INVESTIGATION STEPS:\n"
-            f"1. First, use `lookup_device_in_netbox` to look up the hostname '{hostname}' to get its IP address and device info from the CMDB.\n"
-            "2. Use the IP from NetBox to investigate using your MCP tools (logs, system stats, network). "
-            "Pass the IP as mcp_host parameter (format: 'IP:8001') to target the correct server.\n"
-            "3. If and ONLY if you confirm the threat is REAL and CRITICAL, "
-            "use `create_zammad_ticket` to raise an incident with detailed findings.\n"
-            "4. Provide a final summary of your actions.\n"
-            "LIMIT: Use at most 7 tool calls."
+            f"ALERT: {alert_desc} on '{hostname}'.\n"
+            "Investigate this alert using your available tools. "
+            "CRITICAL RULES:\n"
+            "1. Do NOT write out your thought process.\n"
+            "2. You MUST return ONLY valid JSON containing a single field 'summary' with a 1-2 sentence final summary.\n"
+            "3. Example output: {\"summary\": \"your concise findings\"}"
         )
         
         try:
             result = await agent.run(prompt)
-            analysis = str(result.output)
+            output_text = str(result.output).strip().replace("```json", "").replace("```", "")
+            
+            import json
+            try:
+                parsed = json.loads(output_text)
+                analysis = parsed.get("summary", output_text)
+            except Exception:
+                analysis = output_text
+                
             # Guard final output via guardrails service
             guarded_analysis = await guardrails_check(f"Verified investigation: {analysis}")
             print(f"INVESTIGATION COMPLETE: {guarded_analysis}")

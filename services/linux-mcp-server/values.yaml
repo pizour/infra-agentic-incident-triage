@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  registry: us-central1-docker.pkg.dev
+  registry: europe-west4-docker.pkg.dev
   project: ai-incident-triage
   repository: gke-artifacts-dev
   name: linux-mcp-server
@@ -21,4 +21,4 @@ autoscaling:
   enabled: false
 
 secrets:
-  MCP_API_KEY: ""
+  MCP_API_KEY: "mcp_secret_key_456"

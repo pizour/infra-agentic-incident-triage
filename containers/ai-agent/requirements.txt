@@ -10,6 +10,8 @@ opentelemetry-sdk
 opentelemetry-exporter-otlp
 opentelemetry-instrumentation-fastapi
 openinference-instrumentation-pydantic-ai
+openinference-instrumentation-openai
+opentelemetry-instrumentation-httpx
 prometheus-fastapi-instrumentator
 slowapi
 mcp

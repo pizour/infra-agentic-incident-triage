@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  registry: us-central1-docker.pkg.dev
+  registry: europe-west4-docker.pkg.dev
   project: ai-incident-triage
   repository: gke-artifacts-dev
   name: netbox-mcp-server
@@ -24,5 +24,5 @@ env:
   NETBOX_URL: "http://netbox.netbox.svc.cluster.local:8080" # Assumes netbox is deployed in 'netbox' namespace or similar
 
 secrets:
-  NETBOX_API_TOKEN: ""
-  NETBOX_MCP_API_KEY: ""
+  NETBOX_API_TOKEN: "0123456789abcdef0123456789abcdef01234567"
+  NETBOX_MCP_API_KEY: "netbox_mcp_key_789"

@@ -5,7 +5,7 @@ image:
   project: ai-incident-triage
   repository: gke-artifacts-dev
   name: guardrails
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   tag: "latest"
 
 service:
