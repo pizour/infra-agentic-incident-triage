@@ -21,4 +21,6 @@ autoscaling:
   enabled: false
 
 secrets:
-  MCP_API_KEY: "mcp_secret_key_456"
+  MCP_API_KEY: "" # Loaded via pipeline
+  REMOTE_USER: "" # Loaded via pipeline
+  REMOTE_PASS: "" # Loaded via pipeline

@@ -1,4 +1,5 @@
 import os
+from typing import Optional, List
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -150,40 +151,59 @@ async def lookup_device_in_netbox(ctx: RunContext[None], hostname: str) -> str:
 # --- MCP Investigation Tools ---
 
 @agent.tool
-async def investigate_logs(ctx: RunContext[None], lines: int = 10, mcp_host: str = "linux-mcp-server:8001") -> str:
-    """Investigate system auth logs for security alerts. Use mcp_host to target a specific host's MCP server."""
+async def investigate_logs(ctx: RunContext[None], host: Optional[str] = None, lines: int = 20) -> str:
+    """
+    Investigate system auth logs. 
+    If host is provided, it investigates a remote host via the Linux MCP proxy.
+    Otherwise, it checks the local system.
+    """
     headers = {"X-MCP-API-Key": MCP_API_KEY}
     try:
-        async with sse_client(f"http://{mcp_host}/sse", headers=headers) as (read_stream, write_stream):
+        async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                result = await session.call_tool("read_auth_log", arguments={"lines": lines})
+                arguments = {"lines": lines}
+                if host: arguments["host"] = host
+                
+                result = await session.call_tool("read_auth_log", arguments=arguments)
                 return str(result.content[0].text) if result.content else "No logs returned."
     except Exception as e:
         return f"Investigation error: {e}"
 
 @agent.tool
-async def check_system_stats(ctx: RunContext[None], mcp_host: str = "linux-mcp-server:8001") -> str:
-    """Check CPU and Memory usage via MCP server. Use mcp_host to target a specific host's MCP server."""
+async def check_system_stats(ctx: RunContext[None], host: Optional[str] = None) -> str:
+    """
+    Check CPU and Memory usage.
+    If host is provided, it investigates a remote host via the Linux MCP proxy.
+    """
     headers = {"X-MCP-API-Key": MCP_API_KEY}
     try:
-        async with sse_client(f"http://{mcp_host}/sse", headers=headers) as (read_stream, write_stream):
+        async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                result = await session.call_tool("get_system_stats", arguments={})
+                arguments = {}
+                if host: arguments["host"] = host
+
+                result = await session.call_tool("get_system_stats", arguments=arguments)
                 return str(result.content[0].text) if result.content else "No stats returned."
     except Exception as e:
         return f"Stats error: {e}"
 
 @agent.tool
-async def list_active_connections(ctx: RunContext[None], port: int = 22, mcp_host: str = "linux-mcp-server:8001") -> str:
-    """List network connections via MCP server. Use mcp_host to target a specific host's MCP server."""
+async def list_active_connections(ctx: RunContext[None], port: int = 22, host: Optional[str] = None) -> str:
+    """
+    Lists active network connections.
+    If host is provided, it investigates a remote host via the Linux MCP proxy.
+    """
     headers = {"X-MCP-API-Key": MCP_API_KEY}
     try:
-        async with sse_client(f"http://{mcp_host}/sse", headers=headers) as (read_stream, write_stream):
+        async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                result = await session.call_tool("list_connections", arguments={"port": port})
+                arguments = {"port": port}
+                if host: arguments["host"] = host
+
+                result = await session.call_tool("list_connections", arguments=arguments)
                 return str(result.content[0].text) if result.content else "No connections returned."
     except Exception as e:
         return f"Connections error: {e}"

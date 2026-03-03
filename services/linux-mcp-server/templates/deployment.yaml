@@ -30,5 +30,18 @@ spec:
                 secretKeyRef:
                   name: {{ include "linux-mcp-server.fullname" . }}-secrets
                   key: MCP_API_KEY
+            - name: REMOTE_HOST
+              value: {{ .Values.remoteHost | default "" | quote }}
+            - name: REMOTE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "linux-mcp-server.fullname" . }}-secrets
+                  key: REMOTE_USER
+            - name: REMOTE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "linux-mcp-server.fullname" . }}-secrets
+                  key: REMOTE_PASS
+                  optional: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

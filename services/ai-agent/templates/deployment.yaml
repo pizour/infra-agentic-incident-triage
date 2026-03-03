@@ -46,7 +46,7 @@ spec:
             - name: {{ $key }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-agent.fullname" $ }}-secrets
+                  name: ai-agent-secrets
                   key: {{ $key }}
             {{- end }}
           resources:

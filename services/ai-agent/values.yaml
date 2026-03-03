@@ -67,4 +67,7 @@ env:
 
 # Secrets injected as env vars from K8s Secret
 secrets:
-  APP_API_KEY: "changeme"
+  APP_API_KEY: "" # Loaded via pipeline
+  MCP_API_KEY: "" # Loaded via pipeline
+  NETBOX_MCP_API_KEY: "" # Loaded via pipeline
+  ZAMMAD_TOKEN: "" # Loaded via pipeline

@@ -6,6 +6,7 @@ from .iam import create_service_accounts
 from .artifact_registry import create_artifact_registry
 from .public_ip import create_public_ip, create_multiple_public_ips
 from .argocd import create_argocd
+from .vm import create_testing_vm
 
 __all__ = [
     'create_network',
@@ -17,4 +18,5 @@ __all__ = [
     'create_public_ip',
     'create_multiple_public_ips',
     'create_argocd',
+    'create_testing_vm',
 ]

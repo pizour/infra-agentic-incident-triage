@@ -117,6 +117,20 @@ def main():
         namespace=config.argocd_namespace
     )
     
+    # 8. Create Testing VM
+    # Note: User must create secret 'vm-password' in Secret Manager
+    pulumi.info("Creating testing VM...")
+    vm_resources = create_testing_vm(
+        project_id=config.gcp_project,
+        region=config.gcp_region,
+        zone=config.gke_zone,
+        network_id=network_resources['network'].id,
+        subnet_id=network_resources['subnet'].id,
+        labels=config.labels,
+        username="testuser",
+        password_secret_id="vm-password",
+    )
+    
     # Stack Outputs
     pulumi.export('cluster_name', cluster_resources['cluster_name'])
     pulumi.export('cluster_endpoint', cluster_resources['endpoint'])
@@ -125,6 +139,7 @@ def main():
     pulumi.export('artifact_registry_url', artifact_registry_resources['repository_url'])
     pulumi.export('gateway_ip_address', public_ip_resources['ip_address'])
     pulumi.export('argocd_namespace', argocd_resources['namespace'])
+    pulumi.export('testing_vm_ip', vm_resources['public_ip'])
     
     # Export kubeconfig connection details
     pulumi.export('kubeconfig', pulumi.Output.concat(
