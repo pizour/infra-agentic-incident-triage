@@ -9,15 +9,15 @@ applications:
   - name: ollama
     path: services/ollama
     namespace: ollama
-  # - name: monitoring
-  #   path: services/monitoring
-  #   namespace: monitoring
-  # - name: netbox
-  #   path: services/netbox
-  #   namespace: netbox
-  # - name: zammad
-  #   path: services/zammad
-  #   namespace: zammad
+  - name: monitoring
+    path: services/monitoring
+    namespace: monitoring
+  - name: netbox
+    path: services/netbox
+    namespace: netbox
+  - name: zammad
+    path: services/zammad
+    namespace: zammad
   # - name: linux-mcp-server
   #   path: services/linux-mcp-server
   #   namespace: ai-agent

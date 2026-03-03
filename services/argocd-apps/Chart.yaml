@@ -2,5 +2,5 @@ apiVersion: v2
 name: argocd-apps
 description: A Helm chart for ArgoCD App of Apps GitOps flow
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0.0"
