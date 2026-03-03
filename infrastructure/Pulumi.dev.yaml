@@ -1,6 +1,7 @@
 config:
   gcp:project: ai-incident-triage
   gcp:region: europe-west4
+  gke-infra:environment: dev
   network:name: gke-network-dev
   network:subnet: gke-subnet-dev
   network:cidr: 10.0.0.0/20
@@ -8,12 +9,21 @@ config:
   network:services_cidr: 10.0.16.0/20
   gke:zone: europe-west4-a
   gke:cluster_name: gke-cluster-dev
-  gke:version: 'REGULAR'
-  gke:enable_network_policy: 'true'
-  gke:enable_autoscaling: 'true'
+  gke:version: "1.34"
+  gke:enable_network_policy: "true"
+  gke:enable_autoscaling: "true"
   gke:node_pool_name: default-pool-dev
   gke:machine_type: n2-standard-4
-  gke:min_node_count: '1'
-  gke:max_node_count: '1'
-  gke:disk_size_gb: '100'
-  gke-infra:environment: dev
+  gke:min_node_count: "1"
+  gke:max_node_count: "1"
+  gke:disk_size_gb: "100"
+  gke:gpu_node_pool_name: t4-pool-dev
+  gke:gpu_machine_type: n1-standard-4
+  gke:gpu_accelerator_type: nvidia-tesla-t4
+  gke:gpu_accelerator_count: "1"
+  gke:gpu_min_node_count: "1"
+  gke:gpu_max_node_count: "1"
+  gke:gpu_disk_size_gb: "100"
+  argocd:chart_version: "7.7.16"
+  argocd:chart_repo: https://argoproj.github.io/argo-helm
+  argocd:namespace: argocd
