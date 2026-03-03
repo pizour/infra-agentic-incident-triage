@@ -24,6 +24,6 @@ applications:
   # - name: netbox-mcp-server
   #   path: services/netbox-mcp-server
   #   namespace: ai-agent
-  # - name: ai-agent
-  #   path: services/ai-agent
-  #   namespace: ai-agent
+  - name: ai-agent
+    path: services/ai-agent
+    namespace: ai-agent

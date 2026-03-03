@@ -42,31 +42,13 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-            - name: GEMINI_API_KEY
+            {{- range $key, $value := .Values.secrets }}
+            - name: {{ $key }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-agent.fullname" . }}-secrets
-                  key: GEMINI_API_KEY
-            - name: GOOGLE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "ai-agent.fullname" . }}-secrets
-                  key: GOOGLE_API_KEY
-            - name: APP_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "ai-agent.fullname" . }}-secrets
-                  key: APP_API_KEY
-            - name: MCP_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "ai-agent.fullname" . }}-secrets
-                  key: MCP_API_KEY
-            - name: NETBOX_MCP_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "ai-agent.fullname" . }}-secrets
-                  key: NETBOX_MCP_API_KEY
+                  name: {{ include "ai-agent.fullname" $ }}-secrets
+                  key: {{ $key }}
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

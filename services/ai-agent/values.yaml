@@ -1,12 +1,11 @@
 replicaCount: 1
 
 image:
-  registry: us-central1-docker.pkg.dev
+  registry: europe-west4-docker.pkg.dev
   project: ai-incident-triage
   repository: gke-artifacts-dev
   name: ai-agent
   pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
 
 imagePullSecrets: []
@@ -21,15 +20,8 @@ serviceAccount:
 podAnnotations: {}
 
 podSecurityContext: {}
-  # fsGroup: 2000
 
 securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
 
 service:
   type: ClusterIP
@@ -46,13 +38,13 @@ ingress:
           pathType: ImplementationSpecific
   tls: []
 
-resources: {}
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
 
 autoscaling:
   enabled: false
@@ -67,14 +59,11 @@ tolerations: []
 affinity: {}
 
 env:
-  # Define non-sensitive environment variables
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
   PHOENIX_CLIENT_HEADERS: "api_key=unused"
+  OLLAMA_BASE_URL: "http://ollama-stack-ollama.ollama.svc.cluster.local:11434/v1"
+  LLM_MODEL: "llama3.1:8b"
 
-# Define secrets that will be created as a Kubernetes Secret
+# Secrets injected as env vars from K8s Secret
 secrets:
-  GEMINI_API_KEY: "no-key-yet"
-  GOOGLE_API_KEY: "no-key-yet"
-  APP_API_KEY: "no-key-yet"
-  MCP_API_KEY: "no-key-yet"
-  NETBOX_MCP_API_KEY: "no-key-yet"
+  APP_API_KEY: "changeme"
