@@ -119,17 +119,17 @@ def main():
     
     # 8. Create Testing VM
     # Note: User must create secret 'vm-password' in Secret Manager
-    pulumi.info("Creating testing VM...")
-    vm_resources = create_testing_vm(
-        project_id=config.gcp_project,
-        region=config.gcp_region,
-        zone=config.gke_zone,
-        network_id=network_resources['network'].id,
-        subnet_id=network_resources['subnet'].id,
-        labels=config.labels,
-        username="testuser",
-        password_secret_id="vm-password",
-    )
+    # pulumi.info("Creating testing VM...")
+    # vm_resources = create_testing_vm(
+    #     project_id=config.gcp_project,
+    #     region=config.gcp_region,
+    #     zone=config.gke_zone,
+    #     network_id=network_resources['network'].id,
+    #     subnet_id=network_resources['subnet'].id,
+    #     labels=config.labels,
+    #     username="testuser",
+    #     password_secret_id="vm-password",
+    # )
     
     # Stack Outputs
     pulumi.export('cluster_name', cluster_resources['cluster_name'])
