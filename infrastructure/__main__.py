@@ -139,7 +139,7 @@ def main():
     pulumi.export('artifact_registry_url', artifact_registry_resources['repository_url'])
     pulumi.export('gateway_ip_address', public_ip_resources['ip_address'])
     pulumi.export('argocd_namespace', argocd_resources['namespace'])
-    pulumi.export('testing_vm_ip', vm_resources['public_ip'])
+    #pulumi.export('testing_vm_ip', vm_resources['public_ip'])
     
     # Export kubeconfig connection details
     pulumi.export('kubeconfig', pulumi.Output.concat(
