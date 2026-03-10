@@ -224,9 +224,11 @@ async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: 
     """
     zammad_url = os.getenv("ZAMMAD_URL", "http://zammad-nginx:8080")
     zammad_token = os.getenv("ZAMMAD_TOKEN")
+    zammad_user = os.getenv("ZAMMAD_USER")
+    zammad_pass = os.getenv("ZAMMAD_PASS")
 
-    if not zammad_token:
-        return "Ticket creation skipped: ZAMMAD_TOKEN not set in environment."
+    if not zammad_token and not (zammad_user and zammad_pass):
+        return "Ticket creation skipped: neither ZAMMAD_TOKEN nor ZAMMAD_USER/ZAMMAD_PASS set."
 
     url = f"{zammad_url}/api/v1/tickets"
     priority = "3 high" if risk_level.lower() == "critical" else "2 normal"
@@ -244,10 +246,12 @@ async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: 
         "state": "new",
         "priority": priority
     }
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Token token={zammad_token}"
-    }
+    headers = {"Content-Type": "application/json"}
+    auth = None
+    if zammad_token:
+        headers["Authorization"] = f"Token token={zammad_token}"
+    else:
+        auth = (zammad_user, zammad_pass)
 
     tracer = trace.get_tracer("ai-agent.zammad")
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -257,7 +261,7 @@ async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: 
             span.set_attribute("zammad.priority", priority)
             span.set_attribute("incident.summary", summary[:500])
             try:
-                response = await client.post(url, json=payload, headers=headers)
+                response = await client.post(url, json=payload, headers=headers, auth=auth)
                 span.set_attribute("http.status_code", response.status_code)
                 if response.status_code in (200, 201):
                     ticket = response.json()

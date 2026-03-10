@@ -71,3 +71,5 @@ secrets:
   MCP_API_KEY: "" # Loaded via pipeline
   NETBOX_MCP_API_KEY: "" # Loaded via pipeline
   ZAMMAD_TOKEN: "" # Loaded via pipeline
+  ZAMMAD_USER: "" # Loaded via pipeline (admin email for basic auth)
+  ZAMMAD_PASS: "" # Loaded via pipeline (admin password for basic auth)
