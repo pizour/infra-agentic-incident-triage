@@ -5,7 +5,7 @@ image:
   project: ai-incident-triage
   repository: gke-artifacts-dev
   name: linux-mcp-server
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   tag: "latest"
 
 nameOverride: ""

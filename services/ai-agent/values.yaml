@@ -5,7 +5,7 @@ image:
   project: ai-incident-triage
   repository: gke-artifacts-dev
   name: ai-agent
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   tag: "latest"
 
 imagePullSecrets: []
