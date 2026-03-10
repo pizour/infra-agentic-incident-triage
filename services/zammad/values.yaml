@@ -44,4 +44,8 @@ app:
     storageClass: "standard"
 
 secrets:
-  ZAMMAD_DB_PASS: "zammadpassword"
+  ZAMMAD_DB_PASS: "" # Loaded via pipeline
+  ZAMMAD_ADMIN_EMAIL: "" # Loaded via pipeline
+  ZAMMAD_ADMIN_PASSWORD: "" # Loaded via pipeline
+  ZAMMAD_ADMIN_FIRSTNAME: "" # Loaded via pipeline
+  ZAMMAD_ADMIN_LASTNAME: "" # Loaded via pipeline
