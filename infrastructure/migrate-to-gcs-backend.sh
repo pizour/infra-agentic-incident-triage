@@ -65,6 +65,13 @@ else
     echo "  ✅ Bucket created with versioning enabled."
 fi
 
+# Grant CI/CD service account access to the bucket
+echo "     Granting CI/CD service account objectAdmin access..."
+gsutil iam ch \
+    serviceAccount:github-actions-sa@${PROJECT_ID}.iam.gserviceaccount.com:roles/storage.objectAdmin \
+    "gs://${BUCKET_NAME}"
+echo "  ✅ IAM permissions granted."
+
 # -----------------------------------------------
 # Step 3: Login to GCS backend
 # -----------------------------------------------
