@@ -27,3 +27,4 @@ config:
   argocd:chart_version: "7.7.16"
   argocd:chart_repo: https://argoproj.github.io/argo-helm
   argocd:namespace: argocd
+encryptionsalt: v1:cz8ZEzlZPis=:v1:eRsjSjepHc1MW6Bx:OSrEUEvzMhKmaH0epUpXWZLax++xlg==
