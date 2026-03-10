@@ -248,10 +248,10 @@ async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: 
     }
     headers = {"Content-Type": "application/json"}
     auth = None
-    if zammad_token:
-        headers["Authorization"] = f"Token token={zammad_token}"
-    else:
+    if zammad_user and zammad_pass:
         auth = (zammad_user, zammad_pass)
+    elif zammad_token:
+        headers["Authorization"] = f"Token token={zammad_token}"
 
     tracer = trace.get_tracer("ai-agent.zammad")
     async with httpx.AsyncClient(timeout=30.0) as client:
