@@ -311,8 +311,7 @@ async def handle_alert(request: Request, payload: dict):
             "Create ticket in Zammad if you find a real and critical threat.\n"
             "CRITICAL RULES:\n"
             "1. Do NOT write out your thought process.\n"
-            "2. You MUST return ONLY valid JSON containing a single field 'summary' with a 1-2 sentence final summary.\n"
-            "3. Example output: {\"summary\": \"your concise findings\"}"
+            "2. You MUST return a 1-2 sentence final summary of your findings as your final response.\n"
         )
         
         try:
