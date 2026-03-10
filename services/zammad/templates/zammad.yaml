@@ -43,26 +43,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "zammad.fullname" . }}-secrets
                   key: ZAMMAD_DB_PASS
-            - name: ZAMMAD_ADMIN_EMAIL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "zammad.fullname" . }}-secrets
-                  key: ZAMMAD_ADMIN_EMAIL
-            - name: ZAMMAD_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "zammad.fullname" . }}-secrets
-                  key: ZAMMAD_ADMIN_PASSWORD
-            - name: ZAMMAD_ADMIN_FIRSTNAME
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "zammad.fullname" . }}-secrets
-                  key: ZAMMAD_ADMIN_FIRSTNAME
-            - name: ZAMMAD_ADMIN_LASTNAME
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "zammad.fullname" . }}-secrets
-                  key: ZAMMAD_ADMIN_LASTNAME
           volumeMounts:
             - name: zammad-data
               mountPath: /opt/zammad
