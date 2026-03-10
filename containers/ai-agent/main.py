@@ -47,16 +47,19 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 GUARDRAILS_URL = os.getenv("GUARDRAILS_URL", "http://guardrails.ai-agent.svc.cluster.local:8080")
 
-async def guardrails_check(message: str) -> str:
-    """Send message through the guardrails service. Falls back to original on error."""
+async def guardrails_check(message: str) -> tuple[str, bool]:
+    """Send message through the guardrails service. Returns (content, blocked)."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(f"{GUARDRAILS_URL}/check", json={"message": message})
             if resp.status_code == 200:
-                return resp.json().get("content", message)
+                data = resp.json()
+                content = data.get("content", message)
+                blocked = data.get("blocked", False)
+                return content, blocked
     except Exception as e:
         print(f"Guardrails service unreachable, passing through: {e}")
-    return message
+    return message, False
 
 # --- MCP Client Setup ---
 from mcp import ClientSession
@@ -126,9 +129,13 @@ async def health_check():
 async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key)):
     """Standard agent endpoint for manual queries, with guardrails."""
     try:
-        safe_prompt = await guardrails_check(request.prompt)
+        safe_prompt, blocked = await guardrails_check(request.prompt)
+        if blocked:
+            raise HTTPException(status_code=400, detail=f"Blocked by guardrails: {safe_prompt}")
         result = await agent.run(safe_prompt)
         return AgentResponse(result=str(result.output))
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error running agent: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -297,6 +304,7 @@ async def handle_alert(request: Request, payload: dict):
         prompt = (
             f"ALERT: {alert_desc} on '{hostname}'.\n"
             "Investigate this alert using your available tools. "
+            "Create ticket in Zammad if you find a real and critical threat.\n"
             "CRITICAL RULES:\n"
             "1. Do NOT write out your thought process.\n"
             "2. You MUST return ONLY valid JSON containing a single field 'summary' with a 1-2 sentence final summary.\n"
@@ -315,7 +323,10 @@ async def handle_alert(request: Request, payload: dict):
                 analysis = output_text
                 
             # Guard final output via guardrails service
-            guarded_analysis = await guardrails_check(f"Verified investigation: {analysis}")
+            guarded_analysis, blocked = await guardrails_check(f"Verified investigation: {analysis}")
+            if blocked:
+                print(f"GUARDRAILS BLOCKED OUTPUT: {guarded_analysis}")
+                return {"status": "blocked", "hostname": hostname, "reason": guarded_analysis}
             print(f"INVESTIGATION COMPLETE: {guarded_analysis}")
             return {"status": "investigated", "hostname": hostname, "analysis": guarded_analysis}
         except Exception as e:
