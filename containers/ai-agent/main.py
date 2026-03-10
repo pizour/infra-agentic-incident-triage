@@ -222,7 +222,7 @@ async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: 
     ONLY use this if the investigation confirms a real and critical threat.
     CRITICAL: The `summary` parameter MUST contain the FULL, detailed investigation report, including all evidence found (IPs, log lines) and a detailed remediation plan. Do not just put a short sentence.
     """
-    zammad_url = os.getenv("ZAMMAD_URL", "http://zammad-nginx:8080")
+    zammad_url = os.getenv("ZAMMAD_URL", "http://zammad.zammad.svc.cluster.local:8080")
     zammad_token = os.getenv("ZAMMAD_TOKEN")
     zammad_user = os.getenv("ZAMMAD_USER")
     zammad_pass = os.getenv("ZAMMAD_PASS")

@@ -64,6 +64,7 @@ env:
   OLLAMA_BASE_URL: "http://ollama-stack-ollama.ollama.svc.cluster.local:11434/v1"
   LLM_MODEL: "llama3.1:8b"
   GUARDRAILS_URL: "http://guardrails.ai-agent.svc.cluster.local:8080"
+  ZAMMAD_URL: "http://zammad.zammad.svc.cluster.local:8080"
 
 # Secrets injected as env vars from K8s Secret
 secrets:
