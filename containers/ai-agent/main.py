@@ -325,7 +325,13 @@ async def handle_alert(request: Request, payload: dict):
             except Exception:
                 analysis = output_text
                 
-            # Guard final output via guardrails service
+            # Fallback: if the LLM states it's critical but failed to call the tool natively
+            if "critical" in analysis.lower():
+                try:
+                    ticket_res = await create_zammad_ticket(None, analysis[:250], "Critical")
+                    analysis += f"\n\n[System] Auto-escalated to Zammad: {ticket_res}"
+                except Exception as e:
+                    analysis += f"\n\n[System] Failed to auto-escalate to Zammad: {e}"
             guarded_analysis, blocked = await guardrails_check(f"Verified investigation: {analysis}")
             if blocked:
                 print(f"GUARDRAILS BLOCKED OUTPUT: {guarded_analysis}")
