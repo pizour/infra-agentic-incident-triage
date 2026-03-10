@@ -307,11 +307,11 @@ async def handle_alert(request: Request, payload: dict):
         
         prompt = (
             f"ALERT: {alert_desc} on '{hostname}'.\n"
-            "Investigate this alert using your available tools. "
-            "Create ticket in Zammad if you find a real and critical threat.\n"
+            "Investigate this alert using your available tools.\n"
             "CRITICAL RULES:\n"
             "1. Do NOT write out your thought process.\n"
-            "2. You MUST return a 1-2 sentence final summary of your findings as your final response.\n"
+            "2. If the threat is critical, you MUST use the `create_zammad_ticket` tool to report it. Do not just say you will create it, actually call the tool.\n"
+            "3. You MUST return a 1-2 sentence final summary of your findings as your final text response.\n"
         )
         
         try:
