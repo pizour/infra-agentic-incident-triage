@@ -6,7 +6,7 @@ contactPoints:
       - uid: "fastapi-webhook"
         type: "webhook"
         settings:
-          url: "http://app:8000/webhook"
+          url: "http://ai-agent.ai-agent.svc.cluster.local:8000/webhook"
           httpMethod: "POST"
 
 policies:
@@ -30,7 +30,7 @@ groups:
               to: 0
             datasourceUid: "Loki"
             model:
-              expr: 'count_over_time({job="varlogs"} |= "Failed password" [30s])'
+              expr: 'count_over_time({job="ssh-auth"} |= "Failed password" [30s])'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: "A"
