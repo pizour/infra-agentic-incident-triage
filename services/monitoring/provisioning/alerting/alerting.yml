@@ -28,7 +28,7 @@ groups:
             relativeTimeRange:
               from: 300
               to: 0
-            datasourceUid: "P8E80F9AEF21F6940"
+            datasourceUid: "loki-datasource"
             model:
               expr: 'count_over_time({job="ssh-auth"} |= "Failed password" [30s])'
               intervalMs: 1000
