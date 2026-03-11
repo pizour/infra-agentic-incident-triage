@@ -35,9 +35,14 @@ useradd -m -s /bin/bash {username} || true
 echo "{username}:{password}" | chpasswd
 usermod -aG sudo {username}
 
-# Enable password authentication in SSH
-sed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-sed -i 's/^#\\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/' /etc/ssh/sshd_config
+# Enable password authentication — use a drop-in file with the highest priority
+# so it overrides /etc/ssh/sshd_config.d/60-cloudimg-settings.conf (Debian 12
+# cloud images set PasswordAuthentication no there, ignoring the main sshd_config)
+mkdir -p /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/99-password-auth.conf << 'SSHEOF'
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
+SSHEOF
 systemctl restart sshd
 
 # ------------------------------------------------
