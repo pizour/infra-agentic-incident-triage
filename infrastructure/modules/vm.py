@@ -28,22 +28,22 @@ def create_testing_vm(project_id: str, region: str, zone: str, network_id: str, 
     
     # Startup script to configure the VM
     startup_script = f"""#!/bin/bash
-set -e
 
-# Create user and set password
-useradd -m -s /bin/bash {username} || true
-echo "{username}:{password}" | chpasswd
-usermod -aG sudo {username}
-
-# Enable password authentication — use a drop-in file with the highest priority
-# so it overrides /etc/ssh/sshd_config.d/60-cloudimg-settings.conf (Debian 12
-# cloud images set PasswordAuthentication no there, ignoring the main sshd_config)
+# --- SSH config FIRST, before anything that could fail ---
+# Debian 12 cloud images have /etc/ssh/sshd_config.d/60-cloudimg-settings.conf
+# which sets PasswordAuthentication no and overrides the main sshd_config.
+# A 99-* file wins because sshd processes drop-ins alphabetically.
 mkdir -p /etc/ssh/sshd_config.d
 cat > /etc/ssh/sshd_config.d/99-password-auth.conf << 'SSHEOF'
 PasswordAuthentication yes
 KbdInteractiveAuthentication yes
 SSHEOF
 systemctl restart sshd
+
+# Create user and set password
+useradd -m -s /bin/bash {username} || true
+echo "{username}:{password}" | chpasswd || echo "chpasswd failed, check password"
+usermod -aG sudo {username} || true
 
 # ------------------------------------------------
 # Install node_exporter (system metrics on :9100)
