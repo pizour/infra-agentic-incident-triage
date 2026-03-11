@@ -5,3 +5,12 @@ scrape_configs:
   - job_name: "fastapi-app"
     static_configs:
       - targets: ["app:8000"]
+
+  # Testing VM - node_exporter (system metrics)
+  - job_name: "testing-vm-node"
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          ["testing-vm-dev.europe-west4-a.c.ai-incident-triage.internal:9100"]
+        labels:
+          instance: "testing-vm-dev"

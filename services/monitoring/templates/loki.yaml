@@ -57,3 +57,26 @@ spec:
     app.kubernetes.io/name: loki
     app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+---
+{{- if .Values.loki.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "monitoring.fullname" . }}-loki-internal
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: "10.0.15.200"
+  ports:
+    - port: {{ .Values.loki.service.port }}
+      targetPort: 3100
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

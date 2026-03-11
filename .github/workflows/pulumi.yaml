@@ -70,6 +70,7 @@ jobs:
         env:
           PULUMI_BACKEND_URL: gs://ai-incident-triage-pulumi-state
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+          VM_PASSWORD: ${{ secrets.VM_PASSWORD }}
 
   up:
     name: Pulumi Up
@@ -119,6 +120,7 @@ jobs:
         env:
           PULUMI_BACKEND_URL: gs://ai-incident-triage-pulumi-state
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+          VM_PASSWORD: ${{ secrets.VM_PASSWORD }}
 
   install-secrets:
     name: Install Kubernetes Secrets
