@@ -45,7 +45,7 @@
                 "enableLogDetails": true,
                 "prettifyLogMessage": false,
                 "showCommonLabels": false,
-                "showLabels": false,
+                "showLabels": true,
                 "showTime": true,
                 "sortOrder": "Descending",
                 "wrapLogMessage": true
@@ -56,11 +56,11 @@
                         "type": "loki",
                         "uid": "Loki"
                     },
-                    "expr": "{job=\"varlogs\"}",
+                    "expr": "{job=\"ssh-auth\"}",
                     "refId": "A"
                 }
             ],
-            "title": "System Logs",
+            "title": "SSH Auth Logs (testing-vm-dev)",
             "type": "logs"
         }
     ],
@@ -71,13 +71,13 @@
         "list": []
     },
     "time": {
-        "from": "now-6h",
+        "from": "now-1h",
         "to": "now"
     },
     "timepicker": {},
     "timezone": "",
     "title": "System Logs",
     "uid": "system-logs",
-    "version": 1,
+    "version": 2,
     "weekStart": ""
 }
