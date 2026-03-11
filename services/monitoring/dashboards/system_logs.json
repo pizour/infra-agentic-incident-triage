@@ -31,7 +31,7 @@
         {
             "datasource": {
                 "type": "loki",
-                "uid": "loki-datasource"
+                "uid": "P8E80F9AEF21F6940"
             },
             "gridPos": {
                 "h": 16,
@@ -54,7 +54,7 @@
                 {
                     "datasource": {
                         "type": "loki",
-                        "uid": "loki-datasource"
+                        "uid": "P8E80F9AEF21F6940"
                     },
                     "expr": "{job=\"ssh-auth\"}",
                     "refId": "A"
