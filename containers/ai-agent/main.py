@@ -300,7 +300,8 @@ async def handle_alert(request: Request, payload: dict):
         
         # Extract hostname from alert labels or annotations
         hostname = (
-            alert.get("labels", {}).get("hostname")
+            alert.get("labels", {}).get("host")
+            or alert.get("labels", {}).get("hostname")
             or alert.get("labels", {}).get("instance", "").split(":")[0]
             or "unknown"
         )

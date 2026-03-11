@@ -30,7 +30,7 @@ groups:
               to: 0
             datasourceUid: "loki-datasource"
             model:
-              expr: 'count_over_time({job="ssh-auth"} |= "Failed password" [30s])'
+              expr: 'sum by (host) (count_over_time({job="ssh-auth"} |= "Failed password" [30s]))'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: "A"
