@@ -12,7 +12,7 @@ contactPoints:
 policies:
   - orgId: 1
     receiver: "FastAPI Webhook"
-    group_by: ["alertname"]
+    group_by: ["alertname", "host"]
 
 groups:
   - orgId: 1
@@ -22,7 +22,7 @@ groups:
     rules:
       - uid: "ssh-failed-login"
         title: "Failed SSH Login Attempt"
-        condition: "B"
+        condition: "C"
         data:
           - refId: "A"
             relativeTimeRange:
@@ -38,7 +38,17 @@ groups:
             datasourceUid: "-100"
             model:
               expression: "A"
+              hide: false
+              type: "reduce"
+              reducer: "last"
+              settings:
+                mode: "dropNN"
               refId: "B"
+          - refId: "C"
+            datasourceUid: "-100"
+            model:
+              expression: "B"
+              hide: false
               type: "threshold"
               conditions:
                 - evaluator:
@@ -47,16 +57,17 @@ groups:
                   operator:
                     type: "and"
                   query:
-                    params: ["B"]
+                    params: ["C"]
                   reducer:
                     params: []
                     type: "last"
                   type: "query"
+              refId: "C"
         noDataState: "NoData"
         execErrState: "Error"
         for: "0m"
         annotations:
           summary: "Detected failed SSH login attempt"
-          description: 'Detected 5 or more "Failed password" log entries within 30 seconds.'
+          description: 'Detected 5 or more "Failed password" log entries on host "{{ $labels.host }}" within 30 seconds.'
         labels:
           severity: "critical"
