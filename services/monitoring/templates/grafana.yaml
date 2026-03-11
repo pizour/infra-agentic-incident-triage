@@ -35,6 +35,8 @@ spec:
               mountPath: /etc/grafana/provisioning/datasources
             - name: provisioning-dashboards
               mountPath: /etc/grafana/provisioning/dashboards
+            - name: provisioning-alerting
+              mountPath: /etc/grafana/provisioning/alerting
             - name: dashboards
               mountPath: /etc/grafana/dashboards
       volumes:
@@ -44,6 +46,9 @@ spec:
         - name: provisioning-dashboards
           configMap:
             name: {{ include "monitoring.fullname" . }}-grafana-provisioning-dashboards
+        - name: provisioning-alerting
+          configMap:
+            name: {{ include "monitoring.fullname" . }}-grafana-provisioning-alerting
         - name: dashboards
           configMap:
             name: {{ include "monitoring.fullname" . }}-grafana-dashboards
