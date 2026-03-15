@@ -320,7 +320,7 @@ async def handle_alert(request: Request, payload: dict):
             f"ALERT: {alert_desc} on '{hostname}'.\n"
             "Investigate this alert.\n"
             "CRITICAL RULES:\n"
-            "1. You MUST use all available tools to investigate. Use dummy info from MCP servers if needed.\n"
+            "1. You MUST use all available tools to investigate.\n"
             "2. You MUST ALWAYS use the `create_zammad_ticket` tool to raise a ticket, regardless of the findings.\n"
             "3. Do NOT write your thought process.\n"
             "4. Your final text response must be a max 500 characters summary of findings.\n"
@@ -359,4 +359,3 @@ async def handle_alert(request: Request, payload: dict):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    

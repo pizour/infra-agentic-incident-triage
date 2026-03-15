@@ -3,6 +3,7 @@ import subprocess
 import asyncio
 import asyncssh
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -36,7 +37,10 @@ REMOTE_PASS = os.getenv("REMOTE_PASS")
 # # 3. Apply the patch to the correct subclass
 # mcp.server.session.ServerSession._received_request = auto_init_receive
 # --------------------------------------------------------
-mcp = FastMCP("linux-server")
+mcp = FastMCP(
+    "linux-server",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False)
+)
 
 
 async def run_command(command: str, host: str) -> str:
