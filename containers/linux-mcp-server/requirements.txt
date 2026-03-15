@@ -2,6 +2,5 @@ mcp[cli]
 fastapi
 uvicorn
 sse-starlette
-psutil
 python-dotenv
 asyncssh

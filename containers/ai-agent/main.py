@@ -110,7 +110,7 @@ model = OpenAIChatModel(model_name, provider=ollama_provider)
 agent = Agent(
     model,
     system_prompt=(
-        "You are a strict, concise security AI. "
+        "You are a strict, concise security AI for cloud infrastructure. "
         "You MUST call tools to investigate alerts. DO NOT output conversational plans or explain steps."
     ),
 )
@@ -142,78 +142,88 @@ async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key))
 
 # --- NetBox MCP Tool ---
 
-@agent.tool
-async def lookup_device_in_netbox(ctx: RunContext[None], hostname: str) -> str:
-    """Look up a device in NetBox CMDB by hostname. Returns device info including IP address."""
-    headers = {"X-MCP-API-Key": NETBOX_MCP_API_KEY}
-    try:
-        async with sse_client(NETBOX_MCP_URL, headers=headers) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                result = await session.call_tool("lookup_device", arguments={"name": hostname})
-                return str(result.content[0].text) if result.content else "No device found."
-    except Exception as e:
-        return f"NetBox lookup error: {e}"
+# @agent.tool
+# async def lookup_device_in_netbox(ctx: RunContext[None], hostname: str) -> str:
+#     """Look up a device in NetBox CMDB by hostname. Returns device info including IP address."""
+#     headers = {"X-MCP-API-Key": NETBOX_MCP_API_KEY}
+#     try:
+#         async with sse_client(NETBOX_MCP_URL, headers=headers) as (read_stream, write_stream):
+#             async with ClientSession(read_stream, write_stream) as session:
+#                 await session.initialize()
+#                 result = await session.call_tool("lookup_device", arguments={"name": hostname})
+#                 return str(result.content[0].text) if result.content else "No device found."
+#     except Exception as e:
+#         return f"NetBox lookup error: {e}"
 
 # --- MCP Investigation Tools ---
 
 @agent.tool
-async def investigate_logs(ctx: RunContext[None], host: Optional[str] = None, lines: int = 20) -> str:
+async def investigate_logs(ctx: RunContext[None], host: str, lines: int = 20) -> str:
     """
-    Investigate system auth logs. 
-    If host is provided, it investigates a remote host via the Linux MCP proxy.
-    Otherwise, it checks the local system.
+    Investigate system auth logs on a remote host via the Linux MCP proxy.
     """
     headers = {"X-MCP-API-Key": MCP_API_KEY}
     try:
         async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                arguments = {"lines": lines}
-                if host: arguments["host"] = host
-                
-                result = await session.call_tool("read_auth_log", arguments=arguments)
+                command = f"tail -n {lines} /var/log/auth.log"
+                result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
                 return str(result.content[0].text) if result.content else "No logs returned."
     except Exception as e:
         return f"Investigation error: {e}"
 
 @agent.tool
-async def check_system_stats(ctx: RunContext[None], host: Optional[str] = None) -> str:
+async def check_system_stats(ctx: RunContext[None], host: str) -> str:
     """
-    Check CPU and Memory usage.
-    If host is provided, it investigates a remote host via the Linux MCP proxy.
+    Check CPU and Memory usage on a remote host via the Linux MCP proxy.
     """
     headers = {"X-MCP-API-Key": MCP_API_KEY}
     try:
         async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                arguments = {}
-                if host: arguments["host"] = host
-
-                result = await session.call_tool("get_system_stats", arguments=arguments)
+                command = "top -bn1 | head -n 20"
+                result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
                 return str(result.content[0].text) if result.content else "No stats returned."
     except Exception as e:
         return f"Stats error: {e}"
 
 @agent.tool
-async def list_active_connections(ctx: RunContext[None], port: int = 22, host: Optional[str] = None) -> str:
+async def list_active_connections(ctx: RunContext[None], host: str, port: Optional[int] = None) -> str:
     """
-    Lists active network connections.
-    If host is provided, it investigates a remote host via the Linux MCP proxy.
+    Lists active network connections on a remote host via the Linux MCP proxy.
+    Optional: provide a port to filter results.
     """
     headers = {"X-MCP-API-Key": MCP_API_KEY}
     try:
         async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                arguments = {"port": port}
-                if host: arguments["host"] = host
+                command = "ss -tuln"
+                if port:
+                    command += f" | grep :{port}"
 
-                result = await session.call_tool("list_connections", arguments=arguments)
+                result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
                 return str(result.content[0].text) if result.content else "No connections returned."
     except Exception as e:
         return f"Connections error: {e}"
+
+@agent.tool
+async def execute_remote_command(ctx: RunContext[None], host: str, command: str) -> str:
+    """
+    Executes an arbitrary shell command on a remote Linux host.
+    Use this for custom investigations not covered by other tools.
+    """
+    headers = {"X-MCP-API-Key": MCP_API_KEY}
+    try:
+        async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
+                return str(result.content[0].text) if result.content else "Command executed, no output."
+    except Exception as e:
+        return f"Remote command error: {e}"
 
 @agent.tool
 async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: str) -> str:
@@ -313,7 +323,7 @@ async def handle_alert(request: Request, payload: dict):
             "1. You MUST use all available tools to investigate. Use dummy info from MCP servers if needed.\n"
             "2. You MUST ALWAYS use the `create_zammad_ticket` tool to raise a ticket, regardless of the findings.\n"
             "3. Do NOT write your thought process.\n"
-            "4. Your final text response must be a 1-2 sentence summary of findings.\n"
+            "4. Your final text response must be a max 500 characters summary of findings.\n"
         )
         
         try:
@@ -349,3 +359,4 @@ async def handle_alert(request: Request, payload: dict):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    

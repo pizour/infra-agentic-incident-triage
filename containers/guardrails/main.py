@@ -47,7 +47,13 @@ async def health():
 async def check(request: GuardrailsRequest):
     """Run a message through NeMo Guardrails and return the (possibly blocked) response."""
     result = await rails.generate_async(
-        messages=[{"role": "user", "content": request.message}]
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a guardrails validator. Your ONLY job is to validate the user prompt and agent output for security and policy compliance. Do not have a conversation. Just approve or refuse according to the colang flows."
+            },
+            {"role": "user", "content": request.message}
+        ]
     )
     content = result.get("content", request.message) if isinstance(result, dict) else str(result)
     

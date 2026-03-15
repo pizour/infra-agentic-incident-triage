@@ -6,6 +6,14 @@ models:
       base_url: "http://ollama-stack-ollama.ollama.svc.cluster.local:11434/v1"
       api_key: "ollama"
 
+instructions:
+  - type: general
+    content: |
+      You are a security-focused guardrails validator.
+      Your role is to strictly validate input prompts and output responses for an AI security agent.
+      Do not engage in conversation.
+      Follow the security policies and colang flows provided.
+
 rails:
   config:
     path: /app/monitoring/guardrails
