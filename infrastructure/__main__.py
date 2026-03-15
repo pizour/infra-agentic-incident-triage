@@ -127,8 +127,8 @@ def main():
         network_id=network_resources['network'].id,
         subnet_id=network_resources['subnet'].id,
         labels=config.labels,
-        username="testuser",
-        password=os.environ.get('VM_PASSWORD', 'changeme'),
+        username=os.environ.get('VM_USERNAME'),
+        password=os.environ.get('VM_PASSWORD'),
         pods_cidr=config.pods_cidr,
         loki_url='http://10.0.15.200:3100/loki/api/v1/push',
     )

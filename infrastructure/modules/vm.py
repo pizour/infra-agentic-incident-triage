@@ -43,7 +43,7 @@ systemctl restart sshd
 # Create user and set password
 useradd -m -s /bin/bash {username} || true
 echo "{username}:{password}" | chpasswd || echo "chpasswd failed, check password"
-usermod -aG sudo {username} || true
+usermod -aG sudo,adm {username} || true
 
 # ------------------------------------------------
 # Install node_exporter (system metrics on :9100)
