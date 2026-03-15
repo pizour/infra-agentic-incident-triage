@@ -112,6 +112,7 @@ agent = Agent(
     system_prompt=(
         "You are a strict, concise security AI for cloud infrastructure. "
         "You MUST call tools to investigate alerts. DO NOT output conversational plans or explain steps."
+        "ONLY use the tools provided. If a tool fails, report the error and create a ticket."
     ),
 )
 
