@@ -186,23 +186,28 @@ async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key))
 # --- MCP Investigation Tools ---
 
 @agent.tool
-async def investigate_logs(ctx: RunContext[None], host: str, lines: int = 20) -> str:
+async def investigate_logs(ctx: RunContext[None], host: str, ip: Optional[str] = None, lines: int = 50) -> str:
     """
-    Investigate system auth logs on a remote host via the Linux MCP proxy.
+    Investigate system auth logs on a remote host. 
+    If 'ip' is provided, only show logs matching that IP.
     """
     with tracer.start_as_current_span("tool.investigate_logs") as span:
         span.set_attribute("service.name", "ai-agent")
         span.set_attribute("tool.name", "investigate_logs")
         span.set_attribute("tool.input.host", host)
+        span.set_attribute("tool.input.ip", ip or "none")
         span.set_attribute("tool.input.lines", lines)
         headers = {"X-MCP-API-Key": MCP_API_KEY}
         try:
             async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
                 async with ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
-                    command = f"tail -n {lines} /var/log/auth.log"
+                    if ip:
+                        command = f"grep '{ip}' /var/log/auth.log | tail -n {lines}"
+                    else:
+                        command = f"tail -n {lines} /var/log/auth.log"
                     result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
-                    output = str(result.content[0].text) if result.content else "No logs returned."
+                    output = str(result.content[0].text) if result.content else "No logs found matching criteria."
                     span.set_attribute("tool.output", output[:500])
                     span.set_attribute("tool.status", "success")
                     return output
@@ -297,13 +302,11 @@ async def execute_remote_command(ctx: RunContext[None], host: str, command: str)
             return f"Remote command error: {e}"
 
 @agent.tool
-async def create_zammad_ticket(ctx: Optional[RunContext[None]], summary: str, risk_level: str) -> str:
+async def create_zammad_ticket(ctx: Optional[RunContext[None]], summary: str, risk_level: str = "critical") -> str:
     """
     Create a security incident ticket in Zammad.
-    ONLY use this if the investigation confirms a real and critical threat.
-    CRITICAL: The `summary` parameter MUST contain the FULL, detailed investigation report,
-    including all evidence found (IPs, log lines) and a detailed remediation plan.
-    Do not just put a short sentence.
+    `summary`: The FULL, detailed investigation report with evidence (IPs, logs).
+    `risk_level`: 'critical' or 'normal'.
     """
     zammad_url = os.getenv("ZAMMAD_URL", "http://zammad.zammad.svc.cluster.local:8080")
     zammad_token = os.getenv("ZAMMAD_TOKEN")
@@ -341,28 +344,21 @@ async def create_zammad_ticket(ctx: Optional[RunContext[None]], summary: str, ri
             span.set_attribute("zammad.url", zammad_url)
             span.set_attribute("zammad.risk_level", risk_level)
             span.set_attribute("zammad.priority", priority)
-            span.set_attribute("incident.summary", summary[:500])
+            span.set_attribute("incident.summary", summary[:500] if summary else "")
             try:
                 response = await client.post(url, json=payload, headers=headers, auth=auth)
                 span.set_attribute("http.status_code", response.status_code)
                 if response.status_code in (200, 201):
                     ticket = response.json()
-                    ticket_id = ticket.get("id", "unknown")
                     ticket_number = ticket.get("number", "unknown")
-                    span.set_attribute("zammad.ticket_id", ticket_id)
                     span.set_attribute("zammad.ticket_number", ticket_number)
-                    span.set_attribute("outcome", "ticket_created")
-                    print(f"ZAMMAD TICKET CREATED: #{ticket_number} (id: {ticket_id})")
-                    return f"Incident ticket #{ticket_number} created in Zammad (id: {ticket_id})."
+                    return f"Incident ticket #{ticket_number} created in Zammad."
                 else:
-                    error_msg = response.text[:200]
-                    span.set_attribute("outcome", "http_error")
-                    span.set_attribute("error.message", error_msg)
-                    return f"Failed to create Zammad ticket: HTTP {response.status_code} - {error_msg}"
+                    return f"Failed to create Zammad ticket: HTTP {response.status_code} - {response.text[:200]}"
             except Exception as e:
-                span.set_attribute("outcome", "exception")
-                span.set_attribute("error.message", str(e))
+                span.record_exception(e)
                 return f"Failed to create Zammad ticket: {e}"
+    return "Failed to initiate ticket creation process."
 
 # ---------------------------------------------
 
@@ -397,10 +393,10 @@ async def handle_alert(request: Request, payload: dict):
             f"IMPORTANT: Use '{host_ip}' as the 'host' parameter for ALL MCP tool calls (investigate_logs, check_system_stats, execute_remote_command, list_active_connections).\n"
             "Investigate this alert.\n"
             "CRITICAL RULES:\n"
-            "1. You MUST use all available tools to investigate. Focus on attacker IP\n"
-            "2. Do NOT write your thought process.\n"
-            "3. Your final text response must be a max 500 characters summary of findings.\n"
-            "4. Use zammad to create a ticket for the incident.\n"
+            "1. Use all available tools to investigate the attacker IP\n"
+            "2. Once you have evidence, summarize your findings into a concise report (max 500 chars).\n"
+            "3. FINAL STEP: Use the 'create_zammad_ticket' tool. Pass your entire report as the 'summary' argument.\n"
+            "IMPORTANT: Do not finish the task until the Zammad tool has been successfully called."
         )
         
         tracer = trace.get_tracer(__name__)
@@ -425,12 +421,6 @@ async def handle_alert(request: Request, payload: dict):
                     analysis = output_text
                     
                 print(f"INVESTIGATION COMPLETE: {analysis}")
-                
-                # Fallback: Llama 3.1 often hallucinates the tool call as text instead of actually executing it via API.
-                # If it determined it's an attack and wrote 'zammad' or 'attack', we force the ticket creation.
-                if "attack" in analysis.lower() or "brute-force" in analysis.lower():
-                    print("LLM identified an attack, ensuring Zammad ticket is created...")
-                    await create_zammad_ticket(None, analysis, "critical")
                     
                 return {"status": "investigated", "hostname": hostname, "analysis": analysis}
             except Exception as e:
