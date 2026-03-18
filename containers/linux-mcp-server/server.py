@@ -9,6 +9,24 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from typing import Optional, Annotated
 
+# --- OpenTelemetry / Arize Phoenix Setup ---
+import os
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+# Initialize TracerProvider with Service Name
+resource = Resource.create({SERVICE_NAME: "linux-mcp-server"})
+provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(provider)
+
+tracer = trace.get_tracer(__name__)
+
+# Configure OTLP Exporter (sending to Phoenix)
+endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://phoenix:6006/v1/traces")
+exporter = OTLPSpanExporter(endpoint=endpoint)
+provider.add_span_processor(BatchSpanProcessor(exporter))
+# ---------------------------------------------
+
 
 REMOTE_USER = os.getenv("REMOTE_USER", "testuser")
 REMOTE_PASS = os.getenv("REMOTE_PASS")
@@ -64,8 +82,14 @@ async def execute_command(
     """
     Executes an arbitrary shell command on a remote host via SSH.
     """
-    print(f"DEBUG: execute_command called with command='{command}', host='{host}'")
-    return await run_command(command, host)
+    with tracer.start_as_current_span("mcp.execute_command") as span:
+        span.set_attribute("mcp.command", command)
+        span.set_attribute("mcp.host", host)
+        print(f"DEBUG: execute_command called with command='{command}', host='{host}'")
+        result = await run_command(command, host)
+        span.set_attribute("mcp.success", "SSH Connection Error" not in result and "Remote error" not in result)
+        return result
 
 # Expose the ASGI app for uvicorn with auth middleware
 app = mcp.sse_app()
+FastAPIInstrumentor.instrument_app(app)

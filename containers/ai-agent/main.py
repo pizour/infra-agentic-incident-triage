@@ -9,22 +9,29 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from openinference.instrumentation.openai import OpenAIInstrumentor
+# from openinference.instrumentation.pydantic_ai import PydanticAIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.propagate import inject
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Initialize TracerProvider
-provider = TracerProvider()
+# Initialize TracerProvider with Service Name
+resource = Resource.create({SERVICE_NAME: "ai-agent"})
+provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
+
+tracer = trace.get_tracer(__name__)
 
 # Configure OTLP Exporter (sending to Phoenix)
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://phoenix:6006/v1/traces")
 exporter = OTLPSpanExporter(endpoint=endpoint)
 provider.add_span_processor(BatchSpanProcessor(exporter))
 
-# Instrument OpenAI calls (this captures LLM inputs/outputs sent to Ollama via OpenAIProvider)
+# Instrument frames and libraries
 OpenAIInstrumentor().instrument()
+# PydanticAIInstrumentor().instrument()
 HTTPXClientInstrumentor().instrument()
 # ---------------------------------------------
 
@@ -45,21 +52,29 @@ app = FastAPI(title="AI Agent API (Ollama/Llama)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-GUARDRAILS_URL = os.getenv("GUARDRAILS_URL", "http://guardrails.ai-agent.svc.cluster.local:8080")
+# GUARDRAILS_URL = os.getenv("GUARDRAILS_URL", "http://guardrails.ai-agent.svc.cluster.local:8080")
 
-async def guardrails_check(message: str) -> tuple[str, bool]:
-    """Send message through the guardrails service. Returns (content, blocked)."""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(f"{GUARDRAILS_URL}/check", json={"message": message})
-            if resp.status_code == 200:
-                data = resp.json()
-                content = data.get("content", message)
-                blocked = data.get("blocked", False)
-                return content, blocked
-    except Exception as e:
-        print(f"Guardrails service unreachable, passing through: {e}")
-    return message, False
+# async def guardrails_check(message: str) -> tuple[str, bool]:
+#     """Send message through the guardrails service. Returns (content, blocked)."""
+#     with tracer.start_as_current_span("guardrails.check") as span:
+#         span.set_attribute("guardrails.message", message)
+#         try:
+#             async with httpx.AsyncClient(timeout=10.0) as client:
+#                 resp = await client.post(f"{GUARDRAILS_URL}/check", json={"message": message})
+#                 if resp.status_code == 200:
+#                     data = resp.json()
+#                     content = data.get("content", message)
+#                     blocked = data.get("blocked", False)
+#                     span.set_attribute("guardrails.blocked", blocked)
+#                     span.set_attribute("guardrails.content", content)
+#                     return content, blocked
+#                 else:
+#                     span.set_attribute("http.status_code", resp.status_code)
+#                     span.record_exception(Exception(f"Guardrails returned {resp.status_code}"))
+#         except Exception as e:
+#             print(f"Guardrails service unreachable, passing through: {e}")
+#             span.record_exception(e)
+#         return message, False
 
 # --- MCP Client Setup ---
 from mcp import ClientSession
@@ -111,8 +126,9 @@ agent = Agent(
     model,
     system_prompt=(
         "You are a strict, concise security AI for cloud infrastructure. "
-        "You MUST call tools to investigate alerts. DO NOT output conversational plans or explain steps."
-        "ONLY use the tools provided. If a tool fails, report the error and create a ticket."
+        "You MUST call tools to investigate alerts. DO NOT output conversational plans or explain steps. "
+        "ONLY use the tools provided. If a tool fails, report the error. "
+        "After completing your investigation, if you confirm a real threat, call the create_zammad_ticket tool with a full summary of your findings."
     ),
 )
 
@@ -128,12 +144,13 @@ async def health_check():
 
 @app.post("/agent", response_model=AgentResponse)
 async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key)):
-    """Standard agent endpoint for manual queries, with guardrails."""
+    """Standard agent endpoint for manual queries."""
     try:
-        safe_prompt, blocked = await guardrails_check(request.prompt)
-        if blocked:
-            raise HTTPException(status_code=400, detail=f"Blocked by guardrails: {safe_prompt}")
-        result = await agent.run(safe_prompt)
+        # Guardrails disabled
+        # safe_prompt, blocked = await guardrails_check(request.prompt)
+        # if blocked:
+        #     raise HTTPException(status_code=400, detail=f"Blocked by guardrails: {safe_prompt}")
+        result = await agent.run(request.prompt)
         return AgentResponse(result=str(result.output))
     except HTTPException:
         raise
@@ -146,15 +163,25 @@ async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key))
 # @agent.tool
 # async def lookup_device_in_netbox(ctx: RunContext[None], hostname: str) -> str:
 #     """Look up a device in NetBox CMDB by hostname. Returns device info including IP address."""
-#     headers = {"X-MCP-API-Key": NETBOX_MCP_API_KEY}
-#     try:
-#         async with sse_client(NETBOX_MCP_URL, headers=headers) as (read_stream, write_stream):
-#             async with ClientSession(read_stream, write_stream) as session:
-#                 await session.initialize()
-#                 result = await session.call_tool("lookup_device", arguments={"name": hostname})
-#                 return str(result.content[0].text) if result.content else "No device found."
-#     except Exception as e:
-#         return f"NetBox lookup error: {e}"
+#     with tracer.start_as_current_span("tool.lookup_device_in_netbox") as span:
+#         span.set_attribute("service.name", "ai-agent")
+#         span.set_attribute("tool.name", "lookup_device_in_netbox")
+#         span.set_attribute("tool.input.hostname", hostname)
+#         headers = {"X-MCP-API-Key": NETBOX_MCP_API_KEY}
+#         try:
+#             async with sse_client(NETBOX_MCP_URL, headers=headers) as (read_stream, write_stream):
+#                 async with ClientSession(read_stream, write_stream) as session:
+#                     await session.initialize()
+#                     result = await session.call_tool("lookup_device", arguments={"name": hostname})
+#                     output = str(result.content[0].text) if result.content else "No device found."
+#                     span.set_attribute("tool.output", output[:500])
+#                     span.set_attribute("tool.status", "success")
+#                     return output
+#         except Exception as e:
+#             span.set_attribute("tool.status", "error")
+#             span.set_attribute("tool.error", str(e))
+#             span.record_exception(e)
+#             return f"NetBox lookup error: {e}"
 
 # --- MCP Investigation Tools ---
 
@@ -163,32 +190,53 @@ async def investigate_logs(ctx: RunContext[None], host: str, lines: int = 20) ->
     """
     Investigate system auth logs on a remote host via the Linux MCP proxy.
     """
-    headers = {"X-MCP-API-Key": MCP_API_KEY}
-    try:
-        async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                command = f"tail -n {lines} /var/log/auth.log"
-                result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
-                return str(result.content[0].text) if result.content else "No logs returned."
-    except Exception as e:
-        return f"Investigation error: {e}"
+    with tracer.start_as_current_span("tool.investigate_logs") as span:
+        span.set_attribute("service.name", "ai-agent")
+        span.set_attribute("tool.name", "investigate_logs")
+        span.set_attribute("tool.input.host", host)
+        span.set_attribute("tool.input.lines", lines)
+        headers = {"X-MCP-API-Key": MCP_API_KEY}
+        try:
+            async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    command = f"tail -n {lines} /var/log/auth.log"
+                    result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
+                    output = str(result.content[0].text) if result.content else "No logs returned."
+                    span.set_attribute("tool.output", output[:500])
+                    span.set_attribute("tool.status", "success")
+                    return output
+        except Exception as e:
+            span.set_attribute("tool.status", "error")
+            span.set_attribute("tool.error", str(e))
+            span.record_exception(e)
+            return f"Investigation error: {e}"
 
 @agent.tool
 async def check_system_stats(ctx: RunContext[None], host: str) -> str:
     """
     Check CPU and Memory usage on a remote host via the Linux MCP proxy.
     """
-    headers = {"X-MCP-API-Key": MCP_API_KEY}
-    try:
-        async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                command = "top -bn1 | head -n 20"
-                result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
-                return str(result.content[0].text) if result.content else "No stats returned."
-    except Exception as e:
-        return f"Stats error: {e}"
+    with tracer.start_as_current_span("tool.check_system_stats") as span:
+        span.set_attribute("service.name", "ai-agent")
+        span.set_attribute("tool.name", "check_system_stats")
+        span.set_attribute("tool.input.host", host)
+        headers = {"X-MCP-API-Key": MCP_API_KEY}
+        try:
+            async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    command = "top -bn1 | head -n 20"
+                    result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
+                    output = str(result.content[0].text) if result.content else "No stats returned."
+                    span.set_attribute("tool.output", output[:500])
+                    span.set_attribute("tool.status", "success")
+                    return output
+        except Exception as e:
+            span.set_attribute("tool.status", "error")
+            span.set_attribute("tool.error", str(e))
+            span.record_exception(e)
+            return f"Stats error: {e}"
 
 @agent.tool
 async def list_active_connections(ctx: RunContext[None], host: str, port: Optional[int] = None) -> str:
@@ -196,19 +244,30 @@ async def list_active_connections(ctx: RunContext[None], host: str, port: Option
     Lists active network connections on a remote host via the Linux MCP proxy.
     Optional: provide a port to filter results.
     """
-    headers = {"X-MCP-API-Key": MCP_API_KEY}
-    try:
-        async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                command = "ss -tuln"
-                if port:
-                    command += f" | grep :{port}"
-
-                result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
-                return str(result.content[0].text) if result.content else "No connections returned."
-    except Exception as e:
-        return f"Connections error: {e}"
+    with tracer.start_as_current_span("tool.list_active_connections") as span:
+        span.set_attribute("service.name", "ai-agent")
+        span.set_attribute("tool.name", "list_active_connections")
+        span.set_attribute("tool.input.host", host)
+        if port:
+            span.set_attribute("tool.input.port", port)
+        headers = {"X-MCP-API-Key": MCP_API_KEY}
+        try:
+            async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    command = "ss -tuln"
+                    if port:
+                        command += f" | grep :{port}"
+                    result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
+                    output = str(result.content[0].text) if result.content else "No connections returned."
+                    span.set_attribute("tool.output", output[:500])
+                    span.set_attribute("tool.status", "success")
+                    return output
+        except Exception as e:
+            span.set_attribute("tool.status", "error")
+            span.set_attribute("tool.error", str(e))
+            span.record_exception(e)
+            return f"Connections error: {e}"
 
 @agent.tool
 async def execute_remote_command(ctx: RunContext[None], host: str, command: str) -> str:
@@ -216,22 +275,35 @@ async def execute_remote_command(ctx: RunContext[None], host: str, command: str)
     Executes an arbitrary shell command on a remote Linux host.
     Use this for custom investigations not covered by other tools.
     """
-    headers = {"X-MCP-API-Key": MCP_API_KEY}
-    try:
-        async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
-                return str(result.content[0].text) if result.content else "Command executed, no output."
-    except Exception as e:
-        return f"Remote command error: {e}"
+    with tracer.start_as_current_span("tool.execute_remote_command") as span:
+        span.set_attribute("service.name", "ai-agent")
+        span.set_attribute("tool.name", "execute_remote_command")
+        span.set_attribute("tool.input.host", host)
+        span.set_attribute("tool.input.command", command)
+        headers = {"X-MCP-API-Key": MCP_API_KEY}
+        try:
+            async with sse_client(MCP_SERVER_URL, headers=headers) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    result = await session.call_tool("execute_command", arguments={"command": command, "host": host})
+                    output = str(result.content[0].text) if result.content else "Command executed, no output."
+                    span.set_attribute("tool.output", output[:500])
+                    span.set_attribute("tool.status", "success")
+                    return output
+        except Exception as e:
+            span.set_attribute("tool.status", "error")
+            span.set_attribute("tool.error", str(e))
+            span.record_exception(e)
+            return f"Remote command error: {e}"
 
 @agent.tool
-async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: str) -> str:
+async def create_zammad_ticket(ctx: Optional[RunContext[None]], summary: str, risk_level: str) -> str:
     """
     Create a security incident ticket in Zammad.
     ONLY use this if the investigation confirms a real and critical threat.
-    CRITICAL: The `summary` parameter MUST contain the FULL, detailed investigation report, including all evidence found (IPs, log lines) and a detailed remediation plan. Do not just put a short sentence.
+    CRITICAL: The `summary` parameter MUST contain the FULL, detailed investigation report,
+    including all evidence found (IPs, log lines) and a detailed remediation plan.
+    Do not just put a short sentence.
     """
     zammad_url = os.getenv("ZAMMAD_URL", "http://zammad.zammad.svc.cluster.local:8080")
     zammad_token = os.getenv("ZAMMAD_TOKEN")
@@ -264,7 +336,6 @@ async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: 
     elif zammad_token:
         headers["Authorization"] = f"Token token={zammad_token}"
 
-    tracer = trace.get_tracer("ai-agent.zammad")
     async with httpx.AsyncClient(timeout=30.0) as client:
         with tracer.start_as_current_span("zammad.create_ticket") as span:
             span.set_attribute("zammad.url", zammad_url)
@@ -309,51 +380,63 @@ async def handle_alert(request: Request, payload: dict):
         alert = alerts[0]
         alert_desc = alert.get("annotations", {}).get("description", "No description")
         
-        # Extract hostname from alert labels or annotations
+        # Extract hostname and IPs from alert labels
         hostname = (
             alert.get("labels", {}).get("host")
             or alert.get("labels", {}).get("hostname")
             or alert.get("labels", {}).get("instance", "").split(":")[0]
             or "unknown"
         )
+        # host_ip is the VM's own IP — used by MCP to SSH in
+        host_ip = alert.get("labels", {}).get("host_ip", hostname)
+        source_ip = alert.get("labels", {}).get("source_ip", "unknown")
         
         prompt = (
-            f"ALERT: {alert_desc} on '{hostname}'.\n"
+            f"ALERT: {alert_desc}\n"
+            f"Target host: '{hostname}', Target SSH IP: '{host_ip}', Attacker IP: '{source_ip}'.\n"
+            f"IMPORTANT: Use '{host_ip}' as the 'host' parameter for ALL MCP tool calls (investigate_logs, check_system_stats, execute_remote_command, list_active_connections).\n"
             "Investigate this alert.\n"
             "CRITICAL RULES:\n"
-            "1. You MUST use all available tools to investigate.\n"
-            "2. You MUST ALWAYS use the `create_zammad_ticket` tool to raise a ticket, regardless of the findings.\n"
-            "3. Do NOT write your thought process.\n"
-            "4. Your final text response must be a max 500 characters summary of findings.\n"
+            "1. You MUST use all available tools to investigate. Focus on attacker IP\n"
+            "2. Do NOT write your thought process.\n"
+            "3. Your final text response must be a max 500 characters summary of findings.\n"
+            "4. Use zammad to create a ticket for the incident.\n"
         )
         
-        try:
-            result = await agent.run(prompt)
-            output_text = str(result.output).strip().replace("```json", "").replace("```", "")
-            
-            import json
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span("ai-agent.investigation") as span:
+            span.set_attribute("service.name", "ai-agent")
+            span.set_attribute("alert.name", alert.get("labels", {}).get("alertname", "unknown"))
+            span.set_attribute("alert.host", hostname)
+            span.set_attribute("alert.host_ip", host_ip)
+            span.set_attribute("alert.source_ip", source_ip)
+            span.set_attribute("alert.severity", alert.get("labels", {}).get("severity", "info"))
+            span.set_attribute("alert.description", alert_desc[:500])
+
             try:
-                parsed = json.loads(output_text)
-                analysis = parsed.get("summary", output_text)
-            except Exception:
-                analysis = output_text
+                result = await agent.run(prompt)
+                output_text = str(result.output).strip().replace("```json", "").replace("```", "")
                 
-            # Fallback: if the LLM states it's critical but failed to call the tool natively
-            if "critical" in analysis.lower():
+                import json
                 try:
-                    ticket_res = await create_zammad_ticket(None, analysis[:250], "Critical")
-                    analysis += f"\n\n[System] Auto-escalated to Zammad: {ticket_res}"
-                except Exception as e:
-                    analysis += f"\n\n[System] Failed to auto-escalate to Zammad: {e}"
-            guarded_analysis, blocked = await guardrails_check(f"Verified investigation: {analysis}")
-            if blocked:
-                print(f"GUARDRAILS BLOCKED OUTPUT: {guarded_analysis}")
-                return {"status": "blocked", "hostname": hostname, "reason": guarded_analysis}
-            print(f"INVESTIGATION COMPLETE: {guarded_analysis}")
-            return {"status": "investigated", "hostname": hostname, "analysis": guarded_analysis}
-        except Exception as e:
-            print(f"Error in investigation: {e}")
-            return {"status": "error", "message": str(e)}
+                    parsed = json.loads(output_text)
+                    analysis = parsed.get("summary", output_text)
+                except Exception:
+                    analysis = output_text
+                    
+                print(f"INVESTIGATION COMPLETE: {analysis}")
+                
+                # Fallback: Llama 3.1 often hallucinates the tool call as text instead of actually executing it via API.
+                # If it determined it's an attack and wrote 'zammad' or 'attack', we force the ticket creation.
+                if "attack" in analysis.lower() or "brute-force" in analysis.lower():
+                    print("LLM identified an attack, ensuring Zammad ticket is created...")
+                    await create_zammad_ticket(None, analysis, "critical")
+                    
+                return {"status": "investigated", "hostname": hostname, "analysis": analysis}
+            except Exception as e:
+                print(f"Error in investigation: {e}")
+                span.record_exception(e)
+                return {"status": "error", "message": str(e)}
     
     return {"status": "ignored"}
 

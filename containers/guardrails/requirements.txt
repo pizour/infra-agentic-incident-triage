@@ -9,3 +9,4 @@ opentelemetry-exporter-otlp
 opentelemetry-instrumentation-fastapi
 openinference-instrumentation-langchain
 openinference-instrumentation-openai
+opentelemetry-instrumentation-httpx
