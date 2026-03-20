@@ -27,6 +27,21 @@ applications:
   - name: ai-agent
     path: services/ai-agent
     namespace: ai-agent
+  - name: langgraph-agent
+    path: services/langgraph-agent
+    namespace: ai-agent
+  - name: investigation-agent
+    path: services/investigation-agent
+    namespace: ai-agent
+  - name: analysis-agent
+    path: services/analysis-agent
+    namespace: ai-agent
+  - name: ticket-agent
+    path: services/ticket-agent
+    namespace: ai-agent
+  - name: github-mcp-server
+    path: services/github-mcp-server
+    namespace: ai-agent
   - name: guardrails
     path: services/guardrails
     namespace: ai-agent

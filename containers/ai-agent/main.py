@@ -393,7 +393,7 @@ async def handle_alert(request: Request, payload: dict):
             f"IMPORTANT: Use '{host_ip}' as the 'host' parameter for ALL MCP tool calls (investigate_logs, check_system_stats, execute_remote_command, list_active_connections).\n"
             "Investigate this alert.\n"
             "CRITICAL RULES:\n"
-            "1. Use all available tools to investigate the attacker IP\n"
+            "1. Investigate using the provided tools. Focus on the attacker IP only\n"
             "2. Once you have evidence, summarize your findings into a concise report (max 500 chars).\n"
             "3. FINAL STEP: Use the 'create_zammad_ticket' tool. Pass your entire report as the 'summary' argument.\n"
             "IMPORTANT: Do not finish the task until the Zammad tool has been successfully called."

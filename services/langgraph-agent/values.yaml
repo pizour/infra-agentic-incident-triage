@@ -1,0 +1,69 @@
+replicaCount: 1
+
+image:
+  registry: europe-west4-docker.pkg.dev
+  project: ai-incident-triage
+  repository: gke-artifacts-dev
+  name: langgraph-agent
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8003
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+env:
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
+  INVESTIGATION_API: "http://investigation-agent.investigation-agent.svc.cluster.local:8004/run"
+  ANALYSIS_API: "http://analysis-agent.analysis-agent.svc.cluster.local:8005/run"
+  TICKET_API: "http://ticket-agent.ticket-agent.svc.cluster.local:8006/run"
+
+# Secrets injected as env vars from K8s Secret
+secrets:
+  APP_API_KEY: "" # Loaded via pipeline

@@ -1,0 +1,72 @@
+replicaCount: 1
+
+image:
+  registry: europe-west4-docker.pkg.dev
+  project: ai-incident-triage
+  repository: gke-artifacts-dev
+  name: ticket-agent
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8006
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+env:
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
+  OLLAMA_BASE_URL: "http://ollama-stack-ollama.ollama.svc.cluster.local:11434/v1"
+  LLM_MODEL: "llama3.1:8b"
+  ZAMMAD_URL: "http://zammad.zammad.svc.cluster.local:8080"
+  ZAMMAD_CUSTOMER_ID: "3"
+
+# Secrets injected as env vars from K8s Secret
+secrets:
+  ZAMMAD_TOKEN: "" # Loaded via pipeline
+  ZAMMAD_USER: "" # Loaded via pipeline (admin email for basic auth)
+  ZAMMAD_PASS: "" # Loaded via pipeline (admin password for basic auth)
