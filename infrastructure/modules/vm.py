@@ -32,9 +32,9 @@ def create_testing_vm(project_id: str, region: str, zone: str, network_id: str, 
 # --- SSH config FIRST, before anything that could fail ---
 # Debian 12 cloud images have /etc/ssh/sshd_config.d/60-cloudimg-settings.conf
 # which sets PasswordAuthentication no and overrides the main sshd_config.
-# A 99-* file wins because sshd processes drop-ins alphabetically.
+# A 01-* file wins over 60-* because sshd parses drop-ins alphabetically and honors the first encountered setting.
 mkdir -p /etc/ssh/sshd_config.d
-cat > /etc/ssh/sshd_config.d/99-password-auth.conf << 'SSHEOF'
+cat > /etc/ssh/sshd_config.d/01-password-auth.conf << 'SSHEOF'
 PasswordAuthentication yes
 KbdInteractiveAuthentication yes
 SSHEOF
@@ -81,7 +81,10 @@ rm -f promtail-linux-amd64.zip
 
 mkdir -p /etc/promtail
 
-cat <<'PROMTAILEOF' > /etc/promtail/config.yaml
+# Fetch internal IP from metadata
+HOST_IP=$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip)
+
+cat <<PROMTAILEOF > /etc/promtail/config.yaml
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
@@ -100,7 +103,13 @@ scrape_configs:
         labels:
           job: ssh-auth
           host: testing-vm-dev
+          host_ip: $HOST_IP
           __path__: /var/log/auth.log
+    pipeline_stages:
+      - regex:
+          expression: '.*sshd.*(?:Failed password|Accepted password|Invalid user).*from (?P<source_ip>\d+\.\d+\.\d+\.\d+).*'
+      - labels:
+          source_ip:
 PROMTAILEOF
 
 cat <<'EOF' > /etc/systemd/system/promtail.service

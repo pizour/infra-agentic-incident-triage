@@ -16,7 +16,22 @@ scrape_configs:
         labels:
           job: ssh-auth
           __path__: /var/log/auth.log
-          host: host-system
+    pipeline_stages:
+      - regex:
+          expression: '.*sshd.*(?:Failed password|Accepted password|Invalid user).*from (?P<source_ip>\d+\.\d+\.\d+\.\d+).*'
+      - labels:
+          source_ip:
+      - template:
+          source: host
+          template: '{{ .Env "HOSTNAME" }}'
+      - labels:
+          host:
+      - template:
+          source: host_ip
+          template: '{{ .Env "HOST_IP" }}'
+      - labels:
+          host_ip:
+
   - job_name: system
     static_configs:
       - targets:
@@ -24,4 +39,9 @@ scrape_configs:
         labels:
           job: varlogs
           __path__: /var/log/*.log
-          host: host-system
+    pipeline_stages:
+      - template:
+          source: host
+          template: '{{ .Env "HOSTNAME" }}'
+      - labels:
+          host:

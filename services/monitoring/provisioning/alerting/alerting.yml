@@ -12,7 +12,7 @@ contactPoints:
 policies:
   - orgId: 1
     receiver: "FastAPI Webhook"
-    group_by: ["alertname", "host"]
+    group_by: ["alertname", "host", "host_ip", "source_ip"]
 
 groups:
   - orgId: 1
@@ -30,7 +30,7 @@ groups:
               to: 0
             datasourceUid: "loki-datasource"
             model:
-              expr: 'sum by (host) (count_over_time({job="ssh-auth"} |= "Failed password" [30s]))'
+              expr: 'sum by (host, host_ip, source_ip) (count_over_time({job="ssh-auth"} |= "Failed password" [30s]))'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: "A"
@@ -63,11 +63,11 @@ groups:
                     type: "last"
                   type: "query"
               refId: "C"
-        noDataState: "NoData"
+        noDataState: "OK"
         execErrState: "Error"
         for: "0m"
         annotations:
           summary: "Detected failed SSH login attempt"
-          description: 'Detected 5 or more "Failed password" log entries on host "{{ $labels.host }}" within 30 seconds.'
+          description: 'Detected 5+ "Failed password" entries from IP {{ $labels.source_ip }} on host {{ $labels.host }} ({{ $labels.host_ip }}) within 30 seconds.'
         labels:
           severity: "critical"
