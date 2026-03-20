@@ -302,7 +302,7 @@ async def execute_remote_command(ctx: RunContext[None], host: str, command: str)
             return f"Remote command error: {e}"
 
 @agent.tool
-async def create_zammad_ticket(ctx: Optional[RunContext[None]], summary: str, risk_level: str = "critical") -> str:
+async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: str = "critical") -> str:
     """
     Create a security incident ticket in Zammad.
     `summary`: The FULL, detailed investigation report with evidence (IPs, logs).
