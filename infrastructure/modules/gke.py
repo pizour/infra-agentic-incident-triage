@@ -209,6 +209,7 @@ def create_gpu_node_pool(
     disk_size_gb: int,
     service_account_email: str,
     labels: dict,
+    node_locations: list = None,
 ) -> dict:
     """
     Create GKE GPU node pool with autoscaling and specific taints
@@ -226,6 +227,7 @@ def create_gpu_node_pool(
         disk_size_gb: Disk size in GB
         service_account_email: Service account email
         labels: Labels for nodes
+        node_locations: Specific zones to deploy nodes into (optional)
     
     Returns:
         Dictionary containing node pool reference
@@ -242,6 +244,7 @@ def create_gpu_node_pool(
         name=node_pool_name,
         cluster=cluster.id,
         location=region,
+        node_locations=node_locations,
         
         # Scaling
         autoscaling=gcp.container.NodePoolAutoscalingArgs(
