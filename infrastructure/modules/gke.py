@@ -302,7 +302,7 @@ def create_gpu_node_pool(
         
         opts=pulumi.ResourceOptions(
             depends_on=[cluster],
-            ignore_changes=['initial_node_count', 'node_count', 'cluster', 'node_config'],
+            ignore_changes=['initial_node_count', 'node_count', 'cluster'],
         ),
     )
     
