@@ -210,6 +210,7 @@ def create_gpu_node_pool(
     service_account_email: str,
     labels: dict,
     node_locations: list = None,
+    gpu_partition_size: str = None,
 ) -> dict:
     """
     Create GKE GPU node pool with autoscaling and specific taints
@@ -271,7 +272,7 @@ def create_gpu_node_pool(
             guest_accelerators=[gcp.container.NodePoolNodeConfigGuestAcceleratorArgs(
                 type=accelerator_type,
                 count=accelerator_count,
-                # Required for L4 and newer on GKE, typically handled by driver installer daemonset
+                gpu_partition_size=gpu_partition_size,
                 gpu_driver_installation_config=gcp.container.NodePoolNodeConfigGuestAcceleratorGpuDriverInstallationConfigArgs(
                     gpu_driver_version="LATEST"
                 )

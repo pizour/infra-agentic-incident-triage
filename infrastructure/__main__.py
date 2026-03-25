@@ -84,6 +84,7 @@ def main():
         disk_size_gb=config.gpu_disk_size_gb,
         service_account_email=iam_resources['gke_service_account'].email,
         labels=config.labels,
+        gpu_partition_size=config.gpu_partition_size,
     )
     
     # 5. Create Artifact Registry
