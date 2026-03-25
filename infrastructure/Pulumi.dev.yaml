@@ -22,7 +22,7 @@ config:
   gke:gpu_machine_type: g4-standard-48
   gke:gpu_accelerator_type: nvidia-rtx-pro-6000
   gke:gpu_accelerator_count: "1"
-  gke:gpu_partition_size: "1g.3gb"
+  gke:gpu_spot: "true"
   gke:gpu_min_node_count: "1"
   gke:gpu_max_node_count: "1"
   gke:gpu_disk_size_gb: "100"

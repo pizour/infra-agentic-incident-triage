@@ -211,6 +211,7 @@ def create_gpu_node_pool(
     labels: dict,
     node_locations: list = None,
     gpu_partition_size: str = None,
+    spot: bool = False,
 ) -> dict:
     """
     Create GKE GPU node pool with autoscaling and specific taints
@@ -258,6 +259,7 @@ def create_gpu_node_pool(
             machine_type=machine_type,
             disk_size_gb=disk_size_gb,
             disk_type='pd-standard',
+            spot=spot,
             service_account=service_account_email,
             oauth_scopes=[
                 'https://www.googleapis.com/auth/cloud-platform',
