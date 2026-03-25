@@ -128,7 +128,7 @@ agent = Agent(
         "You are a strict, concise security AI for cloud infrastructure. "
         "You MUST call tools to investigate alerts. DO NOT output conversational plans or explain steps. "
         "ONLY use the tools provided. If a tool fails, report the error. "
-        "After completing your investigation, if you confirm a real threat, call the create_zammad_ticket tool with a full summary of your findings."
+        "After completing your investigation, provide a full summary of your findings and determine if it is a real threat."
     ),
 )
 
@@ -301,8 +301,7 @@ async def execute_remote_command(ctx: RunContext[None], host: str, command: str)
             span.record_exception(e)
             return f"Remote command error: {e}"
 
-@agent.tool
-async def create_zammad_ticket(ctx: RunContext[None], summary: str, risk_level: str = "critical") -> str:
+async def create_zammad_ticket(summary: str, risk_level: str = "critical") -> str:
     """
     Create a security incident ticket in Zammad.
     `summary`: The FULL, detailed investigation report with evidence (IPs, logs).
@@ -395,8 +394,7 @@ async def handle_alert(request: Request, payload: dict):
             "CRITICAL RULES:\n"
             "1. Investigate using the provided tools. Focus on the attacker IP only\n"
             "2. Once you have evidence, summarize your findings into a concise report (max 500 chars).\n"
-            "3. FINAL STEP: Use the 'create_zammad_ticket' tool. Pass your entire report as the 'summary' argument.\n"
-            "IMPORTANT: Do not finish the task until the Zammad tool has been successfully called."
+            "3. Output your final response strictly as JSON in the following format: {\"summary\": \"your detailed findings...\", \"threat\": true/false}"
         )
         
         tracer = trace.get_tracer(__name__)
@@ -417,12 +415,19 @@ async def handle_alert(request: Request, payload: dict):
                 try:
                     parsed = json.loads(output_text)
                     analysis = parsed.get("summary", output_text)
+                    is_threat = parsed.get("threat", True)
                 except Exception:
                     analysis = output_text
+                    is_threat = True
                     
-                print(f"INVESTIGATION COMPLETE: {analysis}")
+                print(f"INVESTIGATION COMPLETE: {analysis} | Threat Confirmed: {is_threat}")
+                
+                ticket_info = "No ticket created (not deemed a threat)."
+                if is_threat:
+                    ticket_info = await create_zammad_ticket(summary=analysis)
+                    print(ticket_info)
                     
-                return {"status": "investigated", "hostname": hostname, "analysis": analysis}
+                return {"status": "investigated", "hostname": hostname, "analysis": analysis, "ticket": ticket_info}
             except Exception as e:
                 print(f"Error in investigation: {e}")
                 span.record_exception(e)
