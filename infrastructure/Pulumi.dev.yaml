@@ -18,6 +18,7 @@ config:
   gke:max_node_count: "1"
   gke:disk_size_gb: "100"
   gke:gpu_node_pool_name: l4-pool-dev
+  gke:gpu_zone: europe-west4-b
   gke:gpu_machine_type: g2-standard-4
   gke:gpu_accelerator_type: nvidia-l4
   gke:gpu_accelerator_count: "1"

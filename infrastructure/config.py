@@ -36,6 +36,7 @@ max_node_count = gke_config.require_int('max_node_count')
 disk_size_gb = gke_config.require_int('disk_size_gb')
 
 # GPU Node Pool Settings
+gpu_zone = gke_config.require('gpu_zone')
 gpu_node_pool_name = gke_config.require('gpu_node_pool_name')
 gpu_machine_type = gke_config.require('gpu_machine_type')
 gpu_accelerator_type = gke_config.require('gpu_accelerator_type')
