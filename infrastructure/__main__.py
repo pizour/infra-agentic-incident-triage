@@ -68,26 +68,27 @@ def main():
         labels=config.labels,
     )
     
-    # 4.5 Create GPU Node Pool
-    pulumi.info("Creating GPU node pool...")
-    gpu_node_pool_resources = create_gpu_node_pool(
-        cluster=cluster_resources['cluster'],
-        cluster_name=config.cluster_name,
-        node_pool_name=config.gpu_node_pool_name,
-        machine_type=config.gpu_machine_type,
-        accelerator_type=config.gpu_accelerator_type,
-        accelerator_count=config.gpu_accelerator_count,
-        region=config.gke_zone,
-        node_locations=[config.gpu_zone],
-        min_node_count=config.gpu_min_node_count,
-        max_node_count=config.gpu_max_node_count,
-        disk_size_gb=config.gpu_disk_size_gb,
-        service_account_email=iam_resources['gke_service_account'].email,
-        labels=config.labels,
-        gpu_partition_size=config.gpu_partition_size,
-        spot=config.gpu_spot,
-    )
-    
+    # TODO: GPU node pool disabled - fix g4/spot config before re-enabling
+    # pulumi.info("Creating GPU node pool...")
+    # gpu_node_pool_resources = create_gpu_node_pool(
+    #     cluster=cluster_resources['cluster'],
+    #     cluster_name=config.cluster_name,
+    #     node_pool_name=config.gpu_node_pool_name,
+    #     machine_type=config.gpu_machine_type,
+    #     accelerator_type=config.gpu_accelerator_type,
+    #     accelerator_count=config.gpu_accelerator_count,
+    #     region=config.gke_zone,
+    #     node_locations=[config.gpu_zone],
+    #     min_node_count=config.gpu_min_node_count,
+    #     max_node_count=config.gpu_max_node_count,
+    #     disk_size_gb=config.gpu_disk_size_gb,
+    #     service_account_email=iam_resources['gke_service_account'].email,
+    #     labels=config.labels,
+    #     gpu_partition_size=config.gpu_partition_size,
+    #     spot=config.gpu_spot,
+    # )
+    gpu_node_pool_resources = None
+
     # 5. Create Artifact Registry
     pulumi.info("Creating artifact registry...")
     artifact_registry_resources = create_artifact_registry(
@@ -159,7 +160,7 @@ def main():
         'network': network_resources,
         'cluster': cluster_resources,
         'node_pool': node_pool_resources,
-        'gpu_node_pool': gpu_node_pool_resources,
+        # 'gpu_node_pool': gpu_node_pool_resources,
         'iam': iam_resources,
         'artifact_registry': artifact_registry_resources,
         'public_ip': public_ip_resources,
