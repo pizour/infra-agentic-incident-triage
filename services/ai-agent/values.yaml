@@ -62,7 +62,7 @@ env:
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
   PHOENIX_CLIENT_HEADERS: "api_key=unused"
   OLLAMA_BASE_URL: "http://ollama-stack-ollama.ollama.svc.cluster.local:11434/v1"
-  LLM_MODEL: "llama3.1:8b"
+  LLM_MODEL: "gemini-2.5-flash"
   GUARDRAILS_URL: "http://guardrails.ai-agent.svc.cluster.local:8080"
   ZAMMAD_URL: "http://zammad.zammad.svc.cluster.local:8080"
 
