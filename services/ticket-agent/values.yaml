@@ -14,7 +14,8 @@ fullnameOverride: ""
 
 serviceAccount:
   create: true
-  annotations: {}
+  annotations:
+    iam.gke.io/gcp-service-account: "gke-cluster-dev-pods-sa@ai-incident-triage.iam.gserviceaccount.com"
   name: ""
 
 podAnnotations: {}
