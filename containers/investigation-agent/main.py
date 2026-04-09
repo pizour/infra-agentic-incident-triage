@@ -52,10 +52,10 @@ MCP_API_KEY = os.getenv("MCP_API_KEY", "")
 #         provider=OpenAIProvider(base_url=_OLLAMA_BASE_URL, api_key="ollama"),
 #     )
 
-from pydantic_ai.models.vertexai import VertexAIModel
+from pydantic_ai.models.google import GoogleModel
 
-def make_model() -> VertexAIModel:
-    return VertexAIModel(os.getenv("LLM_MODEL", "gemini-2.5-flash"))
+def make_model() -> GoogleModel:
+    return GoogleModel(os.getenv("LLM_MODEL", "gemini-2.5-flash"), provider="google-vertex")
 
 
 async def mcp_exec(command: str, host: str, span=None) -> str:

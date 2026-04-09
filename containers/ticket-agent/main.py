@@ -55,10 +55,10 @@ ZAMMAD_CUSTOMER_ID = int(os.getenv("ZAMMAD_CUSTOMER_ID", "1"))
 #         provider=OpenAIProvider(base_url=_OLLAMA_BASE_URL, api_key="ollama"),
 #     )
 
-from pydantic_ai.models.vertexai import VertexAIModel
+from pydantic_ai.models.google import GoogleModel
 
-def make_model() -> VertexAIModel:
-    return VertexAIModel(os.getenv("LLM_MODEL", "gemini-2.5-flash"))
+def make_model() -> GoogleModel:
+    return GoogleModel(os.getenv("LLM_MODEL", "gemini-2.5-flash"), provider="google-vertex")
 
 
 @dataclass

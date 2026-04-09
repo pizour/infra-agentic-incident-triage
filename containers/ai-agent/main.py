@@ -123,9 +123,9 @@ def get_api_key(api_key_header: str = Security(api_key_header)):
 # model = OpenAIChatModel(model_name, provider=ollama_provider)
 
 # Vertex AI (Gemini) Setup
-from pydantic_ai.models.vertexai import VertexAIModel
+from pydantic_ai.models.google import GoogleModel
 model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash")
-model = VertexAIModel(model_name)
+model = GoogleModel(model_name, provider="google-vertex")
 
 agent = Agent(
     model,
