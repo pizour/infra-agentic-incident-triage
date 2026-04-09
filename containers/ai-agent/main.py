@@ -11,8 +11,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from openinference.instrumentation.openai import OpenAIInstrumentor
-# from openinference.instrumentation.pydantic_ai import PydanticAIInstrumentor
+from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.propagate import inject
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -30,8 +29,7 @@ exporter = OTLPSpanExporter(endpoint=endpoint)
 provider.add_span_processor(BatchSpanProcessor(exporter))
 
 # Instrument frames and libraries
-OpenAIInstrumentor().instrument()
-# PydanticAIInstrumentor().instrument()
+provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
 # ---------------------------------------------
 
@@ -129,6 +127,7 @@ model = GoogleModel(model_name, provider="google-vertex")
 
 agent = Agent(
     model,
+    instrument=True,
     system_prompt=(
         "You are a strict, concise security AI for cloud infrastructure. "
         "You MUST call tools to investigate alerts. DO NOT output conversational plans or explain steps. "

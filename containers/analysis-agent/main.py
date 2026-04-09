@@ -11,6 +11,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -22,6 +23,7 @@ tracer = trace.get_tracer(__name__)
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://phoenix:6006/v1/traces")
 provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
 
+provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
 # ---------------------------
 
@@ -63,6 +65,7 @@ class AnalysisDeps:
 # --- Analysis Agent Definition ---
 analysis_agent: Agent[AnalysisDeps, str] = Agent(
     make_model(),
+    instrument=True,
     deps_type=AnalysisDeps,
     result_type=str,
     system_prompt=(
