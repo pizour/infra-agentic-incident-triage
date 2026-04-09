@@ -6,9 +6,9 @@ targetRevision: "main"
 
 # Definitions for all applications to be deployed via GitOps
 applications:
-  - name: ollama
-    path: services/ollama
-    namespace: ollama
+  # - name: ollama
+  #   path: services/ollama
+  #   namespace: ollama
   - name: monitoring
     path: services/monitoring
     namespace: monitoring

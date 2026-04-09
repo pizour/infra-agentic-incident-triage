@@ -40,18 +40,22 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 
 # --- Shared config ---
-_MODEL_NAME = os.getenv("LLM_MODEL", "llama3.1:8b")
-_OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434/v1")
+# _MODEL_NAME = os.getenv("LLM_MODEL", "llama3.1:8b")
+# _OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434/v1")
 
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://linux-mcp-server:8001/sse")
 MCP_API_KEY = os.getenv("MCP_API_KEY", "")
 
+# def make_model() -> OpenAIChatModel:
+#     return OpenAIChatModel(
+#         _MODEL_NAME,
+#         provider=OpenAIProvider(base_url=_OLLAMA_BASE_URL, api_key="ollama"),
+#     )
 
-def make_model() -> OpenAIChatModel:
-    return OpenAIChatModel(
-        _MODEL_NAME,
-        provider=OpenAIProvider(base_url=_OLLAMA_BASE_URL, api_key="ollama"),
-    )
+from pydantic_ai.models.vertexai import VertexAIModel
+
+def make_model() -> VertexAIModel:
+    return VertexAIModel(os.getenv("LLM_MODEL", "gemini-2.5-flash"))
 
 
 async def mcp_exec(command: str, host: str, span=None) -> str:

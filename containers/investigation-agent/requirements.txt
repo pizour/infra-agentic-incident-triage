@@ -2,7 +2,7 @@ fastapi
 uvicorn
 python-dotenv
 loguru
-pydantic-ai[openai]
+pydantic-ai[vertexai,openai]
 mcp
 httpx
 opentelemetry-api

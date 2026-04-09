@@ -113,14 +113,19 @@ def get_api_key(api_key_header: str = Security(api_key_header)):
     )
 
 # Model and Agent Setup — Ollama via OpenAI-compatible API
-model_name = os.getenv("LLM_MODEL", "llama3.1:8b")
-ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama-stack-ollama:11434/v1")
+# model_name = os.getenv("LLM_MODEL", "llama3.1:8b")
+# ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama-stack-ollama:11434/v1")
+#
+# ollama_provider = OpenAIProvider(
+#     base_url=ollama_base_url,
+#     api_key="ollama",  # Ollama doesn't need a real key, but the client requires one
+# )
+# model = OpenAIChatModel(model_name, provider=ollama_provider)
 
-ollama_provider = OpenAIProvider(
-    base_url=ollama_base_url,
-    api_key="ollama",  # Ollama doesn't need a real key, but the client requires one
-)
-model = OpenAIChatModel(model_name, provider=ollama_provider)
+# Vertex AI (Gemini) Setup
+from pydantic_ai.models.vertexai import VertexAIModel
+model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+model = VertexAIModel(model_name)
 
 agent = Agent(
     model,

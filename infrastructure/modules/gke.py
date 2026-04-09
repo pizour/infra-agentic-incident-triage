@@ -13,6 +13,11 @@ def create_gke_cluster(
     labels: dict,
     pods_cidr: str,
     services_cidr: str,
+    node_pool_name: str,
+    machine_type: str,
+    min_node_count: int,
+    max_node_count: int,
+    disk_size_gb: int,
     project: str = None,
 ) -> dict:
     """
@@ -40,8 +45,6 @@ def create_gke_cluster(
         name=cluster_name,
         location=zone,  # single-zone cluster
         deletion_protection=False,
-        initial_node_count=1,  # Required minimum, will be removed by node pool
-        remove_default_node_pool=True,
         network=network_id,
         subnetwork=subnet_id,
         resource_labels=labels,
@@ -93,9 +96,39 @@ def create_gke_cluster(
             workload_pool=f'{project}.svc.id.goog',
         ) if project else None,
         
-        # Ignore changes to temporary node pool (removed immediately)
+        # Inline Node Pool
+        node_pools=[{
+            "name": node_pool_name,
+            "initial_node_count": min_node_count,
+            "autoscaling": {
+                "min_node_count": min_node_count,
+                "max_node_count": max_node_count,
+            },
+            "node_config": {
+                "machine_type": machine_type,
+                "disk_size_gb": disk_size_gb,
+                "disk_type": 'pd-standard',
+                "service_account": service_account_email,
+                "oauth_scopes": ['https://www.googleapis.com/auth/cloud-platform'],
+                "metadata": {'disable-legacy-endpoints': 'true'},
+                "labels": labels,
+                "tags": ['gke-node', cluster_name],
+                "shielded_instance_config": {
+                    "enable_secure_boot": True,
+                    "enable_integrity_monitoring": True,
+                },
+                "workload_metadata_config": {
+                    "mode": 'GKE_METADATA',
+                },
+            },
+            "management": {
+                "auto_repair": True,
+                "auto_upgrade": True,
+            },
+        }],
+        
         opts=pulumi.ResourceOptions(
-            ignore_changes=['initial_node_count', 'node_config'],
+            ignore_changes=['node_config'],
         ),
     )
     

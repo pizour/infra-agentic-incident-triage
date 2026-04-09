@@ -7,7 +7,7 @@ with networking, IAM, and cluster configuration.
 
 import pulumi
 import os
-from modules import create_network, create_gke_cluster, create_node_pool, create_gpu_node_pool, create_service_accounts, create_artifact_registry, create_public_ip, create_argocd, create_testing_vm
+from modules import create_network, create_gke_cluster, create_gpu_node_pool, create_service_accounts, create_artifact_registry, create_public_ip, create_argocd, create_testing_vm
 import config
 
 def main():
@@ -51,22 +51,14 @@ def main():
         pods_cidr=config.pods_cidr,
         services_cidr=config.services_cidr,
         project=config.gcp_project,
-    )
-    
-    # 4. Create Node Pool
-    pulumi.info("Creating node pool...")
-    node_pool_resources = create_node_pool(
-        cluster=cluster_resources['cluster'],
-        cluster_name=config.cluster_name,
         node_pool_name=config.node_pool_name,
         machine_type=config.machine_type,
-        region=config.gke_zone,
         min_node_count=config.min_node_count,
         max_node_count=config.max_node_count,
         disk_size_gb=config.disk_size_gb,
-        service_account_email=iam_resources['gke_service_account'].email,
-        labels=config.labels,
     )
+    
+    node_pool_resources = None
     
     # TODO: GPU node pool disabled - fix g4/spot config before re-enabling
     # pulumi.info("Creating GPU node pool...")

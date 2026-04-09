@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-pydantic-ai[openai]
+pydantic-ai[vertexai,openai]
 python-dotenv
 loguru
 httpx

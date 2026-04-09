@@ -27,6 +27,7 @@ def create_service_accounts(project_name: str, cluster_name: str, region: str) -
         'roles/monitoring.metricWriter',
         'roles/monitoring.viewer',
         'roles/cloudtrace.agent',
+        'roles/aiplatform.user',
     ]
     
     iam_members = []
