@@ -24,9 +24,10 @@ postgres:
 
 env:
   # Langfuse Environment Variables
+  HOSTNAME: "0.0.0.0"
   NEXTAUTH_SECRET: "my-secret-key-replace-in-production"
   SALT: "my-salt-replace-in-production"
-  NEXTAUTH_URL: "http://localhost:3000"
+  NEXTAUTH_URL: "http://localhost:3001"
   DATABASE_URL: "postgresql://langfuse:langfusepassword@localhost:5432/langfuse"
   # Disable auth for dev if possible, but Langfuse usually requires it.
   AUTH_DISABLE_SIGNUP: "true"
