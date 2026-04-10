@@ -6,9 +6,6 @@ targetRevision: "main"
 
 # Definitions for all applications to be deployed via GitOps
 applications:
-  # - name: ollama
-  #   path: services/ollama
-  #   namespace: ollama
   - name: monitoring
     path: services/monitoring
     namespace: monitoring
@@ -24,41 +21,14 @@ applications:
   - name: netbox-mcp-server
     path: services/netbox-mcp-server
     namespace: ai-agent
-  - name: ai-agent
-    path: services/ai-agent
-    namespace: ai-agent
-  - name: langgraph-agent
-    path: services/langgraph-agent
-    namespace: ai-agent
-  - name: investigation-agent
-    path: services/investigation-agent
-    namespace: ai-agent
-  - name: analysis-agent
-    path: services/analysis-agent
-    namespace: ai-agent
-  - name: ticket-agent
-    path: services/ticket-agent
-    namespace: ai-agent
   - name: github-mcp-server
     path: services/github-mcp-server
-    namespace: ai-agent
-  - name: guardrails
-    path: services/guardrails
-    namespace: ai-agent
-  - name: deep-agent
-    path: services/deep-agent
     namespace: ai-agent
   - name: router-agent
     path: services/router-agent
     namespace: ai-agent
   - name: ai-orchestrator
     path: services/ai-orchestrator
-    namespace: ai-agent
-  - name: vm-tshooter-agent
-    path: services/vm-tshooter-agent
-    namespace: ai-agent
-  - name: k8s-tshooter-agent
-    path: services/k8s-tshooter-agent
     namespace: ai-agent
   - name: langfuse
     path: services/langfuse

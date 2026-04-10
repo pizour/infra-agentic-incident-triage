@@ -4,7 +4,7 @@ image:
   registry: europe-west4-docker.pkg.dev
   project: ai-incident-triage
   repository: gke-artifacts-dev
-  name: new-orchestrator
+  name: ai-orchestrator
   pullPolicy: Always
   tag: "latest"
 
@@ -66,8 +66,8 @@ env:
   LANGFUSE_PUBLIC_KEY: "pk-lf-..."
   LANGFUSE_SECRET_KEY: "sk-lf-..."
   LANGFUSE_HOST: "http://langfuse.ai-agent.svc.cluster.local:3000"
+  GOOGLE_APPLICATION_CREDENTIALS: "/etc/gcp/sa-key.json"
 
 # Secrets injected as env vars from K8s Secret
 secrets:
   APP_API_KEY: "" 
-  GOOGLE_APPLICATION_CREDENTIALS: "/etc/gcp/sa-key.json"

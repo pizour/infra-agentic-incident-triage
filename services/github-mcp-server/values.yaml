@@ -2,8 +2,8 @@ replicaCount: 1
 
 image:
   registry: ghcr.io
-  project: modelcontextprotocol
-  repository: server-github
+  project: github
+  repository: github-mcp-server
   name: ""
   pullPolicy: IfNotPresent
   tag: "latest"
