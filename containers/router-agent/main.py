@@ -1,17 +1,14 @@
 import os
-import glob
-import httpx
 import json
-from typing import List, Optional
+import httpx
+from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import frontmatter
 from loguru import logger
 
-from langchain_google_vertexai import ChatVertexAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
+from pydantic_ai import Agent, RunContext
+from pydantic_ai.models.google import GoogleModel
 
 load_dotenv()
 
@@ -22,97 +19,89 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from openinference.instrumentation.langchain import LangChainInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Initialize TracerProvider with Service Name
 resource = Resource.create({SERVICE_NAME: "router-agent"})
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
-
 tracer = trace.get_tracer(__name__)
-
-# Configure OTLP Exporter
-endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://phoenix:6006/v1/traces")
+endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 exporter = OTLPSpanExporter(endpoint=endpoint)
 provider.add_span_processor(BatchSpanProcessor(exporter))
-
+provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
-LangChainInstrumentor().instrument()
-# ---------------------------------------------
 
-app = FastAPI(title="Router-Agent API")
+# --- Configuration ---
+MODEL_NAME = os.getenv("MODEL_NAME", "gemini-1.5-flash")
+GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "http://github-mcp-server.ai-agent.svc.cluster.local:8080/sse")
+GITHUB_REPO = os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage")
+GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 
+app = FastAPI(title="Router-Agent (Pydantic-AI)")
 FastAPIInstrumentor.instrument_app(app)
 Instrumentator().instrument(app).expose(app)
 
-# --- Configuration ---
-SKILLS_DIR = os.getenv("SKILLS_DIR", "/app/skills")
-model = ChatVertexAI(model_name="gemini-2.0-flash", temperature=0)
+model = GoogleModel(MODEL_NAME, provider="google-vertex")
 
-class AgentStep(BaseModel):
-    agent_id: str
-    skills: List[str]
-    env_vars: dict = {}
-    output_key: str = "evidence"
-    reasoning: str
+ROUTER_SYSTEM_PROMPT = (
+    "You are the Router-Agent. Your task is to design an execution plan for incoming requests.\n"
+    "CRITICAL: You MUST use your 'github' tool to read 'agents/router-agent.md' and follow the 'Routing Standard Operating Procedure' (SOP) defined there to the detail.\n"
+    "You also need to discover available agents and skills in the repo by listing directories using the 'github' tool as instructed in the SOP.\n"
+    "Your final answer MUST be the raw JSON plan as described in the SOP."
+)
 
-class RouterResponse(BaseModel):
-    parsed_intent: str
-    plan: List[AgentStep]
-    reasoning: str
+agent = Agent(
+    model,
+    instrument=True,
+    system_prompt=ROUTER_SYSTEM_PROMPT,
+)
 
-parser = JsonOutputParser(pydantic_object=RouterResponse)
-
-# --- Router Logic ---
-
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are the 'Router-Agent'. Your job is to examine an incoming request and design a multi-agent execution plan (a chain).\n"
-               "Follow these internal routing instructions precisely:\n"
-               "{router_instructions}\n"
-               "\n"
-               "Available Target Agents (metadata includes default env vars and output keys):\n"
-               "{available_agents}\n"
-               "\n"
-               "Available skills (SOPs) for those agents:\n"
-               "{available_skills}\n"
-               "\n"
-               "Your response MUST be a valid JSON object with a 'plan' key. Each step in the plan must specify:\n"
-               "- 'agent_id': The routing_key of the target agent.\n"
-               "- 'skills': The list of skills they should use.\n"
-               "- 'env_vars': All required environment variables (drawn from the agent metadata).\n"
-               "- 'output_key': Where to store the result in the shared state (drawn from the agent metadata, e.g., 'evidence', 'analysis', 'ticket').\n"
-               "- 'reasoning': Why this step is necessary.\n"
-               "\n"
-               "Example format:\n"
-               "{{ \"parsed_intent\": \"...\", \"plan\": [{{ \"agent_id\": \"vm_tshooter\", \"skills\": [\"linux_operations/SKILL.md\"], \"env_vars\": {{ \"SYSTEM_PROMPT\": \"...\" }}, \"output_key\": \"evidence\", \"reasoning\": \"...\" }}], \"reasoning\": \"...\" }}"),
-    ("human", "Request: {input}\nContext: {context}"),
-])
-
-
-def get_router_instructions() -> str:
-    path = os.path.join(SKILLS_DIR, "agent_router/SKILL.md")
-    if os.path.exists(path):
-        with open(path, 'r') as f:
-            return f.read()
-    return "Follow standard routing procedures."
-
-def get_available_agents() -> str:
-    agent_files = glob.glob(os.path.join(SKILLS_DIR, "agents/*.md"))
-    agents = []
-    for f in agent_files:
-        post = frontmatter.load(f)
-        agents.append(json.dumps(post.metadata))
-    return "\n---\n".join(agents)
-
-def get_available_skills() -> str:
-    skill_files = glob.glob(os.path.join(SKILLS_DIR, "**/SKILL.md"), recursive=True)
-    skills = []
-    for f in skill_files:
-        rel_path = os.path.relpath(f, SKILLS_DIR)
-        skills.append(rel_path)
-    return "\n".join(skills)
+@agent.tool
+async def github(
+    ctx: RunContext[None],
+    action: str,
+    path: str = None,
+) -> str:
+    """
+    Interact with the GitHub repository.
+    Actions:
+      - list_files: List files in a directory (requires 'path')
+      - read_file: Read content of a file (requires 'path')
+    """
+    logger.info(f"GITHUB TOOL CALL: action={action}, path={path}")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            payload = {
+                "owner": GITHUB_REPO.split('/')[0],
+                "repo": GITHUB_REPO.split('/')[1],
+                "path": path or ".",
+                "branch": GITHUB_BRANCH
+            }
+            
+            # Map action to endpoint
+            endpoint_map = {
+                "list_files": "/list_files",
+                "read_file": "/read_file"
+            }
+            
+            if action not in endpoint_map:
+                return f"Error: Unknown action '{action}'"
+                
+            api_endpoint = GITHUB_MCP_URL.replace("/sse", endpoint_map[action])
+            resp = await client.post(api_endpoint, json=payload)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                if action == "list_files":
+                    files = data.get("files", [])
+                    return "\n".join([f"{f['raw_path']}" for f in files])
+                return data.get("content", "Empty file.")
+            
+            return f"Error calling GitHub MCP ({action}): {resp.text}"
+        except Exception as e:
+            return f"Exception connecting to GitHub MCP: {str(e)}"
 
 class RunRequest(BaseModel):
     input: str
@@ -120,29 +109,32 @@ class RunRequest(BaseModel):
 
 @app.post("/run")
 async def run_router(request: RunRequest):
-    logger.info(f"ROUTER REQUEST: input='{request.input[:100]}...'")
+    logger.info(f"ROUTER AGENT REQUEST: {request.input[:100]}...")
     try:
-        skills_list = get_available_skills()
-        instructions = get_router_instructions()
-        agents_list = get_available_agents()
-        chain = prompt | model | parser
+        prompt = f"Request: {request.input}\nContext: {json.dumps(request.context or {})}"
+        result = await agent.run(prompt)
         
-        result = await chain.ainvoke({
-            "input": request.input,
-            "context": json.dumps(request.context or {}),
-            "available_skills": skills_list,
-            "router_instructions": instructions,
-            "available_agents": agents_list
-        })
+        output = str(result.data)
+        logger.info("PLAN GENERATION COMPLETE")
         
-        logger.info(f"PLAN GENERATED: {len(result.get('plan', []))} steps")
-        for i, step in enumerate(result.get('plan', [])):
-            logger.info(f"  Step {i+1}: {step['agent_id']} ({step['reasoning']})")
+        # Clean up output if it's wrapped in markdown
+        if output.startswith("```json"):
+            output = output.strip("```json").strip("```").strip()
+        elif output.startswith("```"):
+            output = output.strip("```").strip()
             
-        return result
+        try:
+            return json.loads(output)
+        except:
+            return {"raw_output": output}
+
     except Exception as e:
-        logger.error(f"Router error: {e}")
+        logger.error(f"Router execution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/")
+async def health_check():
+    return {"status": "ok", "message": "Router-Agent Pydantic-AI running"}
 
 if __name__ == "__main__":
     import uvicorn
