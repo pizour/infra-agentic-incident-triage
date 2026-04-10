@@ -26,8 +26,13 @@ env:
   # Langfuse Environment Variables
   NEXTAUTH_SECRET: "my-secret-key-replace-in-production"
   SALT: "my-salt-replace-in-production"
-  NEXTAUTH_URL: "http://langfuse.ai-agent.svc.cluster.local:3000"
+  NEXTAUTH_URL: "http://localhost:3000"
   DATABASE_URL: "postgresql://langfuse:langfusepassword@localhost:5432/langfuse"
   # Disable auth for dev if possible, but Langfuse usually requires it.
-  # We'll stick to defaults.
+  AUTH_DISABLE_SIGNUP: "true"
+  # Headless Initialization
+  LANGFUSE_INIT_ORG_NAME: "AI Incident Triage"
+  LANGFUSE_INIT_PROJECT_NAME: "Production"
+  LANGFUSE_INIT_USER_EMAIL: "admin@internal.local"
+  LANGFUSE_INIT_USER_PASSWORD: "adminpassword123"
   # LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"

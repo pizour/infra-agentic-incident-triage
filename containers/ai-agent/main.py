@@ -18,10 +18,7 @@ from opentelemetry.propagate import inject
 from prometheus_fastapi_instrumentator import Instrumentator
 
 # --- Langfuse OTLP Support ---
-from langfuse.openai import LangfuseSpanProcessor # Wait, using OTEL instead
-# Better to use Langfuse native SpanProcessor if we want full integration
-# but the user asked for "telemetry is send there as well"
-from langfuse.otel import LangfuseSpanProcessor
+from langfuse import Langfuse
 
 # Initialize TracerProvider with Service Name
 resource = Resource.create({SERVICE_NAME: "ai-agent"})
@@ -37,7 +34,8 @@ provider.add_span_processor(BatchSpanProcessor(exporter))
 
 # Configure Langfuse SpanProcessor (sending to Langfuse)
 # If env vars LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST are set, it will auto-config
-provider.add_span_processor(LangfuseSpanProcessor())
+# Initialize Langfuse client (automatically registers with OTEL in v3+)
+langfuse = Langfuse()
 
 # Instrument frames and libraries
 provider.add_span_processor(OpenInferenceSpanProcessor())
