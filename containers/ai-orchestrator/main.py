@@ -8,6 +8,17 @@ from dotenv import load_dotenv
 from kubernetes import client, config
 
 from loguru import logger
+import logging
+
+# --- Logging Filter to suppress /health logs ---
+class HealthCheckFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Standard uvicorn access log format contains the path
+        return "/health" not in record.getMessage()
+
+# Suppress standard logging for /health
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
+
 load_dotenv()
 
 # ── OpenTelemetry ─────────────────────────────────────────────────────────────
@@ -46,7 +57,7 @@ from langgraph.graph import StateGraph, END
 
 # --- Configuration ---
 NAMESPACE = os.getenv("NAMESPACE", "ai-agent")
-ROUTER_API = os.getenv("ROUTER_API", "http://router-agent:8010/run")
+ROUTER_API = os.getenv("ROUTER_API", f"http://router-agent.{NAMESPACE}.svc.cluster.local:8010/run")
 GENERIC_AGENT_IMAGE = os.getenv("GENERIC_AGENT_IMAGE", "europe-west4-docker.pkg.dev/ai-incident-triage/gke-artifacts-dev/ai-agent:latest")
 
 # Initialize Kubernetes client
@@ -65,20 +76,6 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 FastAPIInstrumentor.instrument_app(app)
 Instrumentator().instrument(app).expose(app)
-
-# --- Logging Suppression Middleware ---
-@app.middleware("http")
-async def suppress_health_logging(request: Request, call_next):
-    if request.url.path == "/health":
-        # Temporarily disable uvicorn access logging for this request
-        import logging
-        uvicorn_access = logging.getLogger("uvicorn.access")
-        uvicorn_access.disabled = True
-        try:
-            return await call_next(request)
-        finally:
-            uvicorn_access.disabled = False
-    return await call_next(request)
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 API_KEY_NAME = "X-API-Key"
