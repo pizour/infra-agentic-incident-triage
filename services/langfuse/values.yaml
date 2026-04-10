@@ -31,9 +31,13 @@ env:
   DATABASE_URL: "postgresql://langfuse:langfusepassword@localhost:5432/langfuse"
   # Disable auth for dev if possible, but Langfuse usually requires it.
   AUTH_DISABLE_SIGNUP: "true"
-  # Headless Initialization
+  # Headless Initialization (IDs and keys are REQUIRED to trigger creation)
+  LANGFUSE_INIT_ORG_ID: "ai-incident-triage"
   LANGFUSE_INIT_ORG_NAME: "AI Incident Triage"
+  LANGFUSE_INIT_PROJECT_ID: "production"
   LANGFUSE_INIT_PROJECT_NAME: "Production"
+  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: "pk-lf-123456789"
+  LANGFUSE_INIT_PROJECT_SECRET_KEY: "sk-lf-123456789"
   LANGFUSE_INIT_USER_EMAIL: "admin@internal.local"
   LANGFUSE_INIT_USER_PASSWORD: "adminpassword123"
   # LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
