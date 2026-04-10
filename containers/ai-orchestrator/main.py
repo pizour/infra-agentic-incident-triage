@@ -7,6 +7,7 @@ from typing_extensions import TypedDict
 from dotenv import load_dotenv
 from kubernetes import client, config
 
+from loguru import logger
 load_dotenv()
 
 # ── OpenTelemetry ─────────────────────────────────────────────────────────────
@@ -64,6 +65,20 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 FastAPIInstrumentor.instrument_app(app)
 Instrumentator().instrument(app).expose(app)
+
+# --- Logging Suppression Middleware ---
+@app.middleware("http")
+async def suppress_health_logging(request: Request, call_next):
+    if request.url.path == "/health":
+        # Temporarily disable uvicorn access logging for this request
+        import logging
+        uvicorn_access = logging.getLogger("uvicorn.access")
+        uvicorn_access.disabled = True
+        try:
+            return await call_next(request)
+        finally:
+            uvicorn_access.disabled = False
+    return await call_next(request)
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 API_KEY_NAME = "X-API-Key"
@@ -293,7 +308,7 @@ async def health_check():
     return {"status": "ok", "message": "AI-Orchestrator Dynamic running"}
 
 @app.post("/task")
-async def run_task(request: TaskRequest, api_key: str = Security(get_api_key)):
+async def run_task(request: TaskRequest):
     logger.info(f"TASK REQUEST: input='{request.input[:100]}...'")
     initial_state: OrchestratorState = {
         "input": request.input,

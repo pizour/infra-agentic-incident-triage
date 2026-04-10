@@ -52,12 +52,12 @@ spec:
       volumes:
         - name: postgres-data
           persistentVolumeClaim:
-            claimName: {{ include "langfuse.fullname" . }}-postgres
+            claimName: {{ include "langfuse.fullname" . }}-postgres-v2
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "langfuse.fullname" . }}-postgres
+  name: {{ include "langfuse.fullname" . }}-postgres-v2
 spec:
   accessModes:
     - ReadWriteOnce
