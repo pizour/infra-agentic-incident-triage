@@ -9,18 +9,18 @@ applications:
   - name: monitoring
     path: services/monitoring
     namespace: monitoring
-  - name: netbox
-    path: services/netbox
-    namespace: netbox
+  # - name: netbox
+  #   path: services/netbox
+  #   namespace: netbox
   - name: zammad
     path: services/zammad
     namespace: zammad
   - name: linux-mcp-server
     path: services/linux-mcp-server
     namespace: ai-agent
-  - name: netbox-mcp-server
-    path: services/netbox-mcp-server
-    namespace: ai-agent
+  # - name: netbox-mcp-server
+  #   path: services/netbox-mcp-server
+  #   namespace: ai-agent
   - name: github-mcp-server
     path: services/github-mcp-server
     namespace: ai-agent

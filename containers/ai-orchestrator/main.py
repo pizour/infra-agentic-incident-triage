@@ -18,7 +18,7 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
-from langfuse.otel import LangfuseSpanProcessor
+from langfuse import Langfuse
 
 resource = Resource.create({SERVICE_NAME: "ai-orchestrator"})
 provider = TracerProvider(resource=resource)
@@ -28,8 +28,8 @@ tracer = trace.get_tracer(__name__)
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://phoenix:6006/v1/traces")
 provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
 
-# Configure Langfuse SpanProcessor (sending to Langfuse)
-provider.add_span_processor(LangfuseSpanProcessor())
+# Initialize Langfuse client (automatically registers with OTEL in v3+)
+langfuse = Langfuse()
 
 HTTPXClientInstrumentor().instrument()
 # ─────────────────────────────────────────────────────────────────────────────

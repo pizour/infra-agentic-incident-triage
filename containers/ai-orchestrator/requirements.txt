@@ -13,4 +13,4 @@ opentelemetry-instrumentation-httpx
 prometheus-fastapi-instrumentator
 slowapi
 kubernetes
-langfuse
+langfuse>=2.0.0
