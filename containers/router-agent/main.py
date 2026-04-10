@@ -60,7 +60,7 @@ agent = Agent(
 async def github(
     ctx: RunContext[None],
     action: str,
-    path: str = None,
+    path: Optional[str] = None,
 ) -> str:
     """
     Interact with the GitHub repository.
