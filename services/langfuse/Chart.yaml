@@ -1,0 +1,6 @@
+apiVersion: v2
+name: langfuse
+description: A Helm chart for Langfuse
+type: application
+version: 0.1.0
+appVersion: "2.115.0"

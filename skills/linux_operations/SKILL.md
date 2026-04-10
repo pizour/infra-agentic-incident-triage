@@ -5,6 +5,9 @@ description: Standard operating procedures for investigating and troubleshooting
 
 # Operate within Linux
 
+### Required MCP
+Refer to [`mcp/linux-server/SKILL.md`](mcp/linux-server/SKILL.md) for connection details and available tools.
+
 When diagnosing an issue on a Linux host (e.g., resource exhaustion, crashed services), use the following standard commands via the `linux-server` MCP `execute_command` tool.
 
 ### 1. Check Disk Space

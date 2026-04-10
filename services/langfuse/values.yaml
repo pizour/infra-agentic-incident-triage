@@ -1,0 +1,33 @@
+fullnameOverride: "langfuse"
+
+image:
+  repository: langfuse/langfuse
+  tag: 2
+  pullPolicy: IfNotPresent
+
+service:
+  port: 3000
+
+postgres:
+  image:
+    repository: postgres
+    tag: 16-alpine
+    pullPolicy: IfNotPresent
+  user: langfuse
+  database: langfuse
+  password: "langfusepassword"
+  service:
+    port: 5432
+  persistence:
+    size: 5Gi
+    storageClass: "standard"
+
+env:
+  # Langfuse Environment Variables
+  NEXTAUTH_SECRET: "my-secret-key-replace-in-production"
+  SALT: "my-salt-replace-in-production"
+  NEXTAUTH_URL: "http://langfuse.ai-agent.svc.cluster.local:3000"
+  DATABASE_URL: "postgresql://langfuse:langfusepassword@localhost:5432/langfuse"
+  # Disable auth for dev if possible, but Langfuse usually requires it.
+  # We'll stick to defaults.
+  # LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"

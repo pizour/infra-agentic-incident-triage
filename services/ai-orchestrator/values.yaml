@@ -4,7 +4,7 @@ image:
   registry: europe-west4-docker.pkg.dev
   project: ai-incident-triage
   repository: gke-artifacts-dev
-  name: ai-agent
+  name: new-orchestrator
   pullPolicy: Always
   tag: "latest"
 
@@ -14,8 +14,7 @@ fullnameOverride: ""
 
 serviceAccount:
   create: true
-  annotations:
-    iam.gke.io/gcp-service-account: "gke-cluster-dev-pods-sa@ai-incident-triage.iam.gserviceaccount.com"
+  annotations: {}
   name: ""
 
 podAnnotations: {}
@@ -26,7 +25,7 @@ securityContext: {}
 
 service:
   type: ClusterIP
-  port: 8000
+  port: 8009
 
 ingress:
   enabled: false
@@ -61,20 +60,14 @@ affinity: {}
 
 env:
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
-  PHOENIX_CLIENT_HEADERS: "api_key=unused"
-  OLLAMA_BASE_URL: "http://ollama-stack-ollama.ollama.svc.cluster.local:11434/v1"
-  LLM_MODEL: "gemini-2.5-flash"
-  GUARDRAILS_URL: "http://guardrails.ai-agent.svc.cluster.local:8080"
-  ZAMMAD_URL: "http://zammad.zammad.svc.cluster.local:8080"
+  ROUTER_API: "http://router-agent.router-agent.svc.cluster.local:8010/run"
+  GENERIC_AGENT_IMAGE: "europe-west4-docker.pkg.dev/ai-incident-triage/gke-artifacts-dev/ai-agent:latest"
+  NAMESPACE: "ai-agent"
   LANGFUSE_PUBLIC_KEY: "pk-lf-..."
   LANGFUSE_SECRET_KEY: "sk-lf-..."
   LANGFUSE_HOST: "http://langfuse.ai-agent.svc.cluster.local:3000"
 
 # Secrets injected as env vars from K8s Secret
 secrets:
-  APP_API_KEY: "" # Loaded via pipeline
-  MCP_API_KEY: "" # Loaded via pipeline
-  NETBOX_MCP_API_KEY: "" # Loaded via pipeline
-  ZAMMAD_TOKEN: "" # Loaded via pipeline
-  ZAMMAD_USER: "" # Loaded via pipeline (admin email for basic auth)
-  ZAMMAD_PASS: "" # Loaded via pipeline (admin password for basic auth)
+  APP_API_KEY: "" 
+  GOOGLE_APPLICATION_CREDENTIALS: "/etc/gcp/sa-key.json"

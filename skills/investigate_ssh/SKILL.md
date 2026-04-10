@@ -5,6 +5,10 @@ description: How to extract target VM IP addresses and investigate incidents via
 
 # Investigate SSH
 
+### Required MCPs
+- [`mcp/linux-server/SKILL.md`](mcp/linux-server/SKILL.md) — for executing SSH commands on the target host.
+- [`mcp/netbox/SKILL.md`](mcp/netbox/SKILL.md) — for resolving hostnames to IP addresses if `host_ip` is not provided.
+
 When an alert triggers (e.g., from Grafana) regarding a specific Virtual Machine or remote host, the agent must investigate the target VM directly using SSH. 
 
 Follow these steps to correctly access and investigate the target host:

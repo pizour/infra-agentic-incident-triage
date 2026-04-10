@@ -64,8 +64,11 @@ mcp = FastMCP(
 )
 
 
+from loguru import logger
+
 async def run_command(command: str, host: str) -> str:
     """Executes a command on a remote host via SSH."""
+    logger.info(f"SSH EXECUTE: host={host} command='{command}'")
     try:
         connect_kwargs = {}
         if REMOTE_PASS:
@@ -73,8 +76,14 @@ async def run_command(command: str, host: str) -> str:
         
         async with asyncssh.connect(host, username=REMOTE_USER, **connect_kwargs, known_hosts=None) as conn:
             result = await conn.run(command)
-            return result.stdout if result.exit_status == 0 else f"Remote error ({result.exit_status}): {result.stderr}"
+            if result.exit_status == 0:
+                logger.debug(f"SSH SUCCESS: host={host} output_len={len(result.stdout)}")
+                return result.stdout
+            else:
+                logger.error(f"SSH ERROR: host={host} exit_status={result.exit_status} stderr='{result.stderr}'")
+                return f"Remote error ({result.exit_status}): {result.stderr}"
     except Exception as e:
+        logger.error(f"SSH EXCEPTION: host={host} error='{str(e)}'")
         return f"SSH Connection Error to {host}: {str(e)}"
 
 @mcp.tool()
@@ -85,12 +94,13 @@ async def execute_command(
     """
     Executes an arbitrary shell command on a remote host via SSH.
     """
+    logger.info(f"TOOL CALL: execute_command host={host} command='{command}'")
     with tracer.start_as_current_span("mcp.execute_command") as span:
         span.set_attribute("mcp.command", command)
         span.set_attribute("mcp.host", host)
-        print(f"DEBUG: execute_command called with command='{command}', host='{host}'")
         result = await run_command(command, host)
         span.set_attribute("mcp.success", "SSH Connection Error" not in result and "Remote error" not in result)
+        logger.info(f"TOOL COMPLETE: execute_command result_len={len(result)}")
         return result
 
 # Expose the ASGI app for uvicorn with auth middleware

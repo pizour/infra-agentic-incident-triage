@@ -45,3 +45,21 @@ applications:
   - name: guardrails
     path: services/guardrails
     namespace: ai-agent
+  - name: deep-agent
+    path: services/deep-agent
+    namespace: ai-agent
+  - name: router-agent
+    path: services/router-agent
+    namespace: ai-agent
+  - name: ai-orchestrator
+    path: services/ai-orchestrator
+    namespace: ai-agent
+  - name: vm-tshooter-agent
+    path: services/vm-tshooter-agent
+    namespace: ai-agent
+  - name: k8s-tshooter-agent
+    path: services/k8s-tshooter-agent
+    namespace: ai-agent
+  - name: langfuse
+    path: services/langfuse
+    namespace: ai-agent

@@ -1,0 +1,31 @@
+replicaCount: 1
+
+image:
+  registry: europe-west4-docker.pkg.dev
+  project: ai-incident-triage
+  repository: gke-artifacts-dev
+  name: router-agent
+  pullPolicy: Always
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8010
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+env:
+  SKILLS_DIR: "/app/skills"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
+
+# Skills will be mounted from GitHub or PVC
+persistence:
+  enabled: true
+  existingClaim: "skills-pvc"
+  mountPath: "/app/skills"

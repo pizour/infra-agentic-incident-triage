@@ -35,16 +35,20 @@ NETBOX_API_TOKEN = os.getenv("NETBOX_API_TOKEN")
 NETBOX_MCP_API_KEY = os.getenv("NETBOX_MCP_API_KEY")
 
 
+from loguru import logger
+
 class APIKeyAuthMiddleware(BaseHTTPMiddleware):
     """Validates X-MCP-API-Key header on every request."""
     async def dispatch(self, request: Request, call_next):
         if not NETBOX_MCP_API_KEY:
+            logger.error("NETBOX_MCP_API_KEY not configured on server")
             return JSONResponse(
                 status_code=500,
                 content={"detail": "NETBOX_MCP_API_KEY not configured"}
             )
         key = request.headers.get("X-MCP-API-Key")
         if key != NETBOX_MCP_API_KEY:
+            logger.warning(f"AUTH FAILED: path={request.url.path} client={request.client.host}")
             return JSONResponse(
                 status_code=403,
                 content={"detail": "Invalid or missing API key"}
@@ -64,6 +68,7 @@ HEADERS = {
 @mcp.tool()
 def lookup_device(name: str) -> str:
     """Look up a device in NetBox by name. Returns device info including primary IP."""
+    logger.info(f"TOOL CALL: lookup_device name='{name}'")
     with tracer.start_as_current_span("mcp.lookup_device") as span:
         span.set_attribute("mcp.device_name", name)
         try:
@@ -77,6 +82,7 @@ def lookup_device(name: str) -> str:
                 data = resp.json()
 
                 if data["count"] == 0:
+                    logger.info(f"LOOKUP EMPTY: name='{name}'")
                     return f"No device found with name '{name}'"
 
                 device = data["results"][0]
@@ -96,14 +102,17 @@ def lookup_device(name: str) -> str:
                 elif device.get("primary_ip4"):
                     result["primary_ip"] = device["primary_ip4"]["address"]
 
+                logger.info(f"LOOKUP SUCCESS: name='{name}' id={device['id']}")
                 return str(result)
         except Exception as e:
+            logger.error(f"LOOKUP ERROR: name='{name}' error='{e}'")
             return f"Error looking up device: {e}"
 
 
 @mcp.tool()
 def list_devices() -> str:
     """List all devices registered in NetBox."""
+    logger.info("TOOL CALL: list_devices")
     with tracer.start_as_current_span("mcp.list_devices") as span:
         try:
             with httpx.Client(timeout=10.0) as client:
@@ -127,8 +136,10 @@ def list_devices() -> str:
                         "site": d["site"]["name"] if d.get("site") else None,
                         "role": d["role"]["name"] if d.get("role") else None,
                     })
+                logger.info(f"LIST SUCCESS: count={len(devices)}")
                 return str(devices) if devices else "No devices found in NetBox"
         except Exception as e:
+            logger.error(f"LIST ERROR: error='{e}'")
             return f"Error listing devices: {e}"
 
 
