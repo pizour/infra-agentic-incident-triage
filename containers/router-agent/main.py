@@ -34,7 +34,7 @@ provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
 
 # --- Configuration ---
-MODEL_NAME = os.getenv("MODEL_NAME", "gemini-1.5-flash")
+MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash")
 GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "http://github-mcp-server.ai-agent.svc.cluster.local:8080/sse")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
@@ -48,8 +48,6 @@ model = GoogleModel(MODEL_NAME, provider="google-vertex")
 ROUTER_SYSTEM_PROMPT = (
     "You are the Router-Agent. Your task is to design an execution plan for incoming requests.\n"
     "CRITICAL: You MUST use your 'github' tool to read 'agents/router-agent.md' and follow the 'Routing Standard Operating Procedure' (SOP) defined there to the detail.\n"
-    "You also need to discover available agents and skills in the repo by listing directories using the 'github' tool as instructed in the SOP.\n"
-    "Your final answer MUST be the raw JSON plan as described in the SOP."
 )
 
 agent = Agent(

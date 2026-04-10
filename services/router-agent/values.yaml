@@ -22,7 +22,7 @@ resources:
 
 env:
   SKILLS_DIR: "/app/skills"
-  MODEL_NAME: "gemini-1.5-flash"
+  MODEL_NAME: "gemini-2.5-flash"
   GITHUB_MCP_URL: "http://github-mcp-server.ai-agent.svc.cluster.local:8080/sse"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
 
