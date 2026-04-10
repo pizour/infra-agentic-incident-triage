@@ -13,11 +13,13 @@ import logging
 # --- Logging Filter to suppress /health logs ---
 class HealthCheckFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        # Standard uvicorn access log format contains the path
         return "/health" not in record.getMessage()
 
-# Suppress standard logging for /health
-logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
+def setup_logging():
+    # Attempt to add filter to uvicorn access logger
+    for name in ["uvicorn.access", "uvicorn"]:
+        l = logging.getLogger(name)
+        l.addFilter(HealthCheckFilter())
 
 load_dotenv()
 
@@ -76,6 +78,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 FastAPIInstrumentor.instrument_app(app)
 Instrumentator().instrument(app).expose(app)
+
+@app.on_event("startup")
+async def startup_event():
+    setup_logging()
+    logger.info("AI-Orchestrator refined logging and connectivity initialized")
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 API_KEY_NAME = "X-API-Key"

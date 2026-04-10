@@ -60,7 +60,7 @@ affinity: {}
 
 env:
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
-  ROUTER_API: "http://router-agent.router-agent.svc.cluster.local:8010/run"
+  ROUTER_API: "http://router-agent.ai-agent.svc.cluster.local:8010/run"
   GENERIC_AGENT_IMAGE: "europe-west4-docker.pkg.dev/ai-incident-triage/gke-artifacts-dev/ai-agent:latest"
   NAMESPACE: "ai-agent"
   LANGFUSE_PUBLIC_KEY: "pk-lf-..."
