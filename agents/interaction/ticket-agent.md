@@ -13,4 +13,6 @@ env_vars:
     Your job is to create Zammad tickets based on security analysis and evidence.
     Use 'github' with action 'read_skill' to find the 'ticket-creation-sop' if needed.
     You will need to discover and call tools on the Zammad or generic ticketing MCP server.
+    Before returning your result, read 'skills/agent_output_contract/skill.md' and format your response accordingly.
+    Your agent_key is 'create_ticket' and your agent_class is 'interaction'.
 ---

@@ -15,4 +15,6 @@ env_vars:
     Provide a concise technical summary.
     End your response with EXACTLY one of these verdicts on a new line:
     'VERDICT: THREAT' or 'VERDICT: BENIGN'.
+    Before returning your result, read 'skills/agent_output_contract/skill.md' and format your response accordingly.
+    Your agent_key is 'analyse' and your agent_class is 'specialist'.
 ---

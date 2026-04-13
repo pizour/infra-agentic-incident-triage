@@ -3,7 +3,7 @@ import json
 import httpx
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -23,7 +23,7 @@ from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 
-resource = Resource.create({SERVICE_NAME: "router-agent"})
+resource = Resource.create({SERVICE_NAME: "nexus-controller"})
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
@@ -39,20 +39,36 @@ GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "http://github-mcp-server.ai-agent.
 GITHUB_REPO = os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 
-app = FastAPI(title="Router-Agent (Pydantic-AI)")
-FastAPIInstrumentor.instrument_app(app)
+app = FastAPI(title="Nexus-Controller (Pydantic-AI)")
+FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
 Instrumentator().instrument(app).expose(app)
 
 model = GoogleModel(MODEL_NAME, provider="google-vertex")
 
+class AgentValidationResult(BaseModel):
+    agent_key: str
+    agent_class: str  # "control-plane" | "interaction" | "specialist"
+    accuracy: float
+    correctness: float
+    completeness: float
+    safety_check: bool
+    reasoning: str = Field(..., max_length=50)
+    data: Optional[dict] = None
+
+class NexusRoutingDecision(BaseModel):
+    action: str
+    feedback: str
+    target_agent: Optional[str] = None
+
 ROUTER_SYSTEM_PROMPT = (
-    "You are the Router-Agent. Your task is to design an execution plan for incoming requests.\n"
-    "CRITICAL: You MUST use your 'github' tool to read 'agents/router-agent.md' and follow the 'Routing Standard Operating Procedure' (SOP) defined there to the detail.\n"
+    "You are the Nexus Controller. Your task is to evaluate the provided validation state and make a routing decision.\n"
+    "CRITICAL: You MUST use your 'github' tool to read 'agents/control-plane/nexus-controller.md' and follow the operating procedures defined there to the detail.\n"
 )
 
 agent = Agent(
     model,
     instrument=True,
+    result_type=NexusRoutingDecision,
     system_prompt=ROUTER_SYSTEM_PROMPT,
 )
 
@@ -103,31 +119,21 @@ async def github(
 
 class RunRequest(BaseModel):
     input: str
-    context: Optional[dict] = None
+    context_summary: str = ""
+    latest_validation: Optional[Dict[str, Any]] = None
 
 @app.post("/run")
-async def run_router(request: RunRequest):
-    logger.info(f"ROUTER AGENT REQUEST: {request.input[:100]}...")
+async def run_nexus_controller(request: RunRequest):
+    logger.info(f"NEXUS CONTROLLER REQUEST: {request.input[:100]}...")
     try:
-        prompt = f"Request: {request.input}\nContext: {json.dumps(request.context or {})}"
+        prompt = f"Goal: {request.input}\nContext: {request.context_summary}\nLatest Validation: {json.dumps(request.latest_validation or {})}"
         result = await agent.run(prompt)
         
-        output = str(result.data)
-        logger.info("PLAN GENERATION COMPLETE")
-        
-        # Clean up output if it's wrapped in markdown
-        if output.startswith("```json"):
-            output = output.strip("```json").strip("```").strip()
-        elif output.startswith("```"):
-            output = output.strip("```").strip()
-            
-        try:
-            return json.loads(output)
-        except:
-            return {"raw_output": output}
+        logger.info(f"ROUTING DECISION COMPLETE: {result.data.action}")
+        return result.data.model_dump()
 
     except Exception as e:
-        logger.error(f"Router execution failed: {e}")
+        logger.error(f"Controller execution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")

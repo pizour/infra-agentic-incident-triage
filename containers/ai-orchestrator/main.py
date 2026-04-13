@@ -1,8 +1,9 @@
 import os
+import json
 import httpx
 import time
 import asyncio
-from typing import Optional, List, Annotated, Dict
+from typing import Optional, List, Dict, Any
 from typing_extensions import TypedDict
 from dotenv import load_dotenv
 from kubernetes import client, config
@@ -50,7 +51,7 @@ HTTPXClientInstrumentor().instrument()
 
 from fastapi import FastAPI, HTTPException, Security, status, Request
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -72,11 +73,11 @@ core_v1 = client.CoreV1Api()
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="AI-Orchestrator - Dynamic Multi-Agent Graph")
+app = FastAPI(title="AI Orchestrator")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-FastAPIInstrumentor.instrument_app(app)
+FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
 Instrumentator().instrument(app).expose(app)
 
 @app.on_event("startup")
@@ -105,24 +106,18 @@ def get_api_key(api_key_header: Optional[str] = Security(api_key_header)) -> str
 # LangGraph State Machine
 # ══════════════════════════════════════════════════════════════════════════════
 
-class AgentStep(TypedDict):
-    agent_id: str
-    skills: List[str]
-    env_vars: Dict[str, str]
-    output_key: str
-    reasoning: str
 
-class OrchestratorState(TypedDict):
-    """Shared state threaded through every LangGraph node."""
-    # Input: alert context
+
+class CompleteState(TypedDict):
+    """Single shared state threaded through every LangGraph node."""
     input: str
     context: Optional[dict]
-    
-    # Plan
-    plan: List[AgentStep]
-    
-    # Results accumulation
-    results: Dict[str, str]
+    results: Dict[str, Any]
+    validation_history: List[dict]
+    latest_validation: Optional[dict]
+    next_action: str
+    next_agent: Optional[str]
+    next_instructions: str
 
 
 # ── Kubernetes Pod Lifecycle Helper ───────────────────────────────────────────
@@ -196,105 +191,89 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str]) ->
             logger.error(f"Error deleting pod {pod_name}: {e}")
 
 
-# ── Node: Router ──────────────────────────────────────────────────────────────
-async def node_router(state: OrchestratorState) -> dict:
-    logger.info("NODE: router - designing plan")
-    with tracer.start_as_current_span("ai-orchestrator.node.router") as span:
+# ── Node: Nexus Controller ──────────────────────────────────────────────────────────
+async def node_nexus_controller(state: CompleteState) -> dict:
+    logger.info("NODE: nexus_controller - evaluating state")
+    with tracer.start_as_current_span("ai-orchestrator.node.nexus_controller") as span:
         payload = {
             "input": state["input"],
-            "context": state["context"]
+            "context_summary": str(state.get("context", {})),
+            "latest_validation": state.get("latest_validation")
         }
-        
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(ROUTER_API, json=payload, timeout=60.0)
                 response.raise_for_status()
                 data = response.json()
-                plan = data.get("plan", [])
-                logger.info(f"ROUTER PLAN RECEIVED: {len(plan)} steps")
-                for i, step in enumerate(plan):
-                    logger.info(f"  Step {i+1}: {step['agent_id']} ({step['reasoning']})")
-                span.set_attribute("plan_steps", len(plan))
-                return {"plan": plan}
+                action = data.get("action", "finish")
+                target_agent = data.get("target_agent")
+                feedback = data.get("feedback", "")
+                logger.info(f"CONTROLLER DECISION: action={action}, target={target_agent}")
+                return {"next_action": action, "next_agent": target_agent, "next_instructions": feedback}
             except Exception as e:
-                logger.error(f"Router call failed: {e}")
+                logger.error(f"Controller call failed: {e}")
                 span.record_exception(e)
-                return {"plan": []}
-
+                return {"next_action": "finish"}
 
 # ── Node: Executor ────────────────────────────────────────────────────────────
-async def node_executor(state: OrchestratorState) -> dict:
-    if not state["plan"]:
-        logger.info("NODE: executor - plan exhausted")
+async def node_executor(state: CompleteState) -> dict:
+    """Dumb executor: spawn the agent pod nexus-controller asked for, store raw result."""
+    if state.get("next_action") not in ["next_agent", "retry"]:
         return {}
-        
-    # Get the next step
-    plan = state["plan"].copy()
-    step = plan.pop(0)
-    agent_id = step["agent_id"]
-    output_key = step.get("output_key", "evidence")
-    
-    logger.info(f"NODE: executor - running step for agent={agent_id}")
+
+    agent_id = state.get("next_agent")
+    if not agent_id:
+        logger.error("No target_agent provided by Controller!")
+        return {"next_action": "finish"}
+
+    logger.info(f"NODE: executor - forwarding to agent={agent_id}")
     with tracer.start_as_current_span(f"ai-orchestrator.node.execute.{agent_id}") as span:
-        span.set_attribute("agent_id", agent_id)
-        span.set_attribute("output_key", output_key)
-        
-        # Build the prompt for the agent dynamically using all results
-        prompt = f"TASK: {state['input']}\n"
-        if state["results"]:
-            prompt += "\nRESULTS GATHERED SO FAR:\n"
-            for k, v in state["results"].items():
-                prompt += f"--- {k.upper()} ---\n{v}\n"
-            
-        prompt += f"\nYOUR SPECIFIC INSTRUCTIONS: {step['reasoning']}\n"
-        prompt += f"Use these skills: {', '.join(step['skills'])}\n"
+        span.set_attribute("agent_id", str(agent_id))
+        prompt = str(state.get("next_instructions") or state["input"])
 
         try:
-            result = await run_agent_pod(agent_id, prompt, step.get("env_vars", {}))
-            logger.info(f"STEP COMPLETE: agent={agent_id} stored in key='{output_key}'")
-            
-            # Update shared results dictionary
-            results = state["results"].copy()
-            # If multiple agents write to the same key (e.g., 'evidence'), append it
-            if output_key in results:
-                results[output_key] = (results[output_key] + "\n\n" + result).strip()
-            else:
-                results[output_key] = result
-                
-            return {"plan": plan, "results": results}
+            result_str = await run_agent_pod(str(agent_id), prompt, {})
         except Exception as e:
-            logger.error(f"Step failed for agent {agent_id}: {e}")
+            logger.error(f"Pod failed for agent {agent_id}: {e}")
             span.record_exception(e)
-            results = state["results"].copy()
-            error_msg = f"Error in {agent_id}: {e}"
-            results["error"] = (results.get("error", "") + "\n" + error_msg).strip()
-            return {"plan": plan, "results": results}
+            result_str = json.dumps({"agent_key": str(agent_id), "error": str(e)[:200]})
 
+        # Store raw result — no parsing, no scoring. Nexus-controller evaluates.
+        history = list(state.get("validation_history") or [])
+        results = dict(state.get("results") or {})  # type: ignore[arg-type]
+        results[str(agent_id)] = result_str
+        history.append({"agent_key": str(agent_id), "raw": result_str})
+
+        return {
+            "results": results,
+            "latest_validation": {"agent_key": str(agent_id), "raw": result_str},
+            "validation_history": history,
+        }
 
 # ── Routing ───────────────────────────────────────────────────────────────────
-def route_next(state: OrchestratorState) -> str:
-    if state["plan"]:
-        return "execute"
-    return END
-
+def route_from_controller(state: CompleteState) -> str:
+    """After nexus_controller decides: execute the suggested agent or finish."""
+    action = state.get("next_action", "finish")
+    if action == "finish":
+        return END
+    return "execute"
 
 # ── Graph compilation ─────────────────────────────────────────────────────────
 def _build_graph() -> StateGraph:
-    g = StateGraph(OrchestratorState)
-
-    g.add_node("router", node_router)
+    g = StateGraph(CompleteState)
+    g.add_node("nexus_controller", node_nexus_controller)
     g.add_node("execute", node_executor)
 
-    g.set_entry_point("router")
-    g.add_edge("router", "execute")
+    g.set_entry_point("nexus_controller")
     g.add_conditional_edges(
-        "execute",
-        route_next,
+        "nexus_controller",
+        route_from_controller,
         {"execute": "execute", END: END},
     )
+    # All agent results always go back to nexus_controller for re-evaluation
+    g.add_edge("execute", "nexus_controller")
 
     return g.compile()
-
 
 workflow = _build_graph()
 
@@ -314,11 +293,16 @@ async def health_check():
 @app.post("/task")
 async def run_task(request: TaskRequest):
     logger.info(f"TASK REQUEST: input='{request.input[:100]}...'")
-    initial_state: OrchestratorState = {
+    # Initialize LangGraph state
+    initial_state: CompleteState = {
         "input": request.input,
-        "context": request.context or {},
-        "plan": [],
+        "context": request.context,
         "results": {},
+        "validation_history": [],
+        "latest_validation": None,
+        "next_action": "",
+        "next_agent": None,
+        "next_instructions": ""
     }
     
     with tracer.start_as_current_span("ai-orchestrator.task.execution") as span:
@@ -337,6 +321,7 @@ async def run_task(request: TaskRequest):
 @app.post("/webhook")
 @limiter.limit("5/minute")
 async def handle_alert(request: Request, payload: dict):
+    """Receive raw webhook payload, pass it to the graph. Zero parsing — nexus-controller handles it."""
     alert_status = payload.get("status", "unknown")
     alerts = payload.get("alerts", [])
 
@@ -344,40 +329,25 @@ async def handle_alert(request: Request, payload: dict):
         logger.info(f"WEBHOOK IGNORED: status={alert_status}")
         return {"status": "ignored"}
 
-    alert = alerts[0]
-    alert_desc = alert.get("annotations", {}).get("description", "No description")
-    logger.info(f"WEBHOOK RECEIVED: alert='{alert.get('labels', {}).get('alertname', 'unknown')}' status='firing'")
+    logger.info(f"WEBHOOK RECEIVED: status='firing', alerts={len(alerts)}")
 
-    hostname = (
-        alert.get("labels", {}).get("host")
-        or alert.get("labels", {}).get("hostname")
-        or alert.get("labels", {}).get("instance", "").split(":")[0]
-        or "unknown"
-    )
-    host_ip = alert.get("labels", {}).get("host_ip", hostname)
-    source_ip = alert.get("labels", {}).get("source_ip", "unknown")
-
-    initial_state: OrchestratorState = {
-        "input": alert_desc,
-        "context": {
-            "host": hostname,
-            "host_ip": host_ip,
-            "source_ip": source_ip,
-            "alert": alert
-        },
-        "plan": [],
+    # Pass raw payload as-is — nexus-controller extracts fields via its skills
+    initial_state: CompleteState = {
+        "input": json.dumps(payload),
+        "context": {"source": "grafana", "raw_payload": payload},
         "results": {},
+        "validation_history": [],
+        "latest_validation": None,
+        "next_action": "",
+        "next_agent": None,
+        "next_instructions": "",
     }
 
     with tracer.start_as_current_span("ai-orchestrator.alert.orchestration") as span:
         try:
             final = await workflow.ainvoke(initial_state)
             logger.info("ALERT ORCHESTRATION COMPLETED")
-            return {
-                "status": "investigated",
-                "hostname": hostname,
-                "results": final.get("results", {})
-            }
+            return {"status": "completed", "results": final.get("results", {})}
         except Exception as e:
             logger.error(f"Alert orchestration failed: {e}")
             span.record_exception(e)
