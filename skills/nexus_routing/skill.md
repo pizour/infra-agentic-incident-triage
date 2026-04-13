@@ -27,6 +27,7 @@ Apply the following rules strictly in order:
    - You MUST do this before making any `next_agent` decision so you only route to agents and assign skills that actually exist.
 
 1. **First Request Detection**:
+   - Read `skills/input-guardrail/skill.md` and validate the incoming `input` against the Unified Input Schema.
    - IF `latest_validation` is `null` or `validation_history` is empty, this is the **first request**.
    - Input validation is already performed by the `input_guardrail` agent — do NOT re-validate here.
    - On first request: skip quality threshold checks and go directly to routing (step 3).
