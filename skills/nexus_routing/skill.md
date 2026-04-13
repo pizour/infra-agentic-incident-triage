@@ -7,14 +7,7 @@ description: Nexus Controller Decision Matrix
 You are the Nexus Controller. Your task is to evaluate the `AgentValidationResult` provided by the previous agent step and determine the next action in the orchestration flow.
 
 ## Input Evaluation Metrics
-You will receive a state containing an `AgentValidationResult` with the following fields:
-- `agent_key` (str) — the `routing_key` of the agent that produced this result (e.g. `k8s_tshooter`)
-- `accuracy` (float 0.0 - 1.0)
-- `correctness` (float 0.0 - 1.0)
-- `completeness` (float 0.0 - 1.0)
-- `safety_check` (bool)
-- `reasoning` (str, max 50 chars)
-- `data` (dict)
+The Nexus Controller receives execution results from agents. You MUST read `skills/agent_output_contract/skill.md` to understand the structured format and required fields (`accuracy`, `correctness`, `completeness`, `safety_check`, etc.) that you will use to make routing decisions.
 
 ## Routing Rules
 Apply the following rules strictly in order:

@@ -14,8 +14,7 @@ Load and follow each skill **in order** using the `github` tool before making an
 
 | Step | File | Purpose |
 |------|------|---------|
-| 1 | `skills/input-guardrail/skill.md` | Understand the unified input schema and validation outcomes |
-| 2 | `skills/nexus_routing/skill.md` | Apply routing logic and decide the next action |
+| 1 | `skills/nexus_routing/skill.md` | Apply routing logic and decide the next action |
 
 ## Available Agents
 
