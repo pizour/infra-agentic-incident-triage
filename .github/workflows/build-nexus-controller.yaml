@@ -7,8 +7,8 @@ on:
     tags:
       - "v*"
     paths:
-      - ".github/workflows/build-router-agent.yaml"
-      - "containers/router-agent/**"
+      - ".github/workflows/build-nexus-controller.yaml"
+      - "containers/nexus-controller/**"
   workflow_dispatch:
 
 env:
@@ -72,7 +72,7 @@ jobs:
         if: steps.check_image.outputs.exists != 'true'
         uses: docker/build-push-action@v5
         with:
-          context: ./containers/router-agent
-          file: ./containers/router-agent/Dockerfile
+          context: ./containers/nexus-controller
+          file: ./containers/nexus-controller/Dockerfile
           push: true
           tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/router-agent:${{ env.TAG }},${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/router-agent:latest
