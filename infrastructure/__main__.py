@@ -155,9 +155,9 @@ def main():
         # 'gpu_node_pool': gpu_node_pool_resources,
         'iam': iam_resources,
         'artifact_registry': artifact_registry_resources,
-        'public_ip': public_ip_resources,
+        # 'public_ip': public_ip_resources,
         'argocd': argocd_resources,
-        'vm': vm_resources,
+        # 'vm': vm_resources,
     }
 
 if __name__ == '__main__':
