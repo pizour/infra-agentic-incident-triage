@@ -58,6 +58,7 @@ MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash")
 GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "http://github-mcp-server.ai-agent.svc.cluster.local:8080/sse")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
+MCP_API_KEY = os.getenv("MCP_API_KEY", "")
 
 app = FastAPI(title="Nexus-Controller (Pydantic-AI)")
 FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
@@ -128,16 +129,21 @@ async def github(
             api_endpoint = f"{base_url}{endpoint_map[action]}"
             
             logger.debug(f"Calling GitHub MCP endpoint: {api_endpoint}")
-            resp = await client.post(api_endpoint, json=payload)
+            
+            headers = {}
+            if MCP_API_KEY:
+                headers["X-MCP-API-Key"] = MCP_API_KEY
+                
+            resp = await client.post(api_endpoint, json=payload, headers=headers)
             
             if resp.status_code == 200:
                 data = resp.json()
                 if action == "list_files":
-                    files = data.get("files", [])
-                    return "\n".join([f"{f['raw_path']}" for f in files])
-                return data.get("content", "Empty file.")
+                    files: List[Dict[str, Any]] = data.get("files", [])
+                    return "\n".join([str(f.get('raw_path', '')) for f in files])
+                return str(data.get("content", "Empty file."))
             
-            return f"Error calling GitHub MCP ({action}): {resp.text}"
+            return f"Error calling GitHub MCP ({action}) status={resp.status_code}: {resp.text}"
         except Exception as e:
             return f"Exception connecting to GitHub MCP: {str(e)}"
 

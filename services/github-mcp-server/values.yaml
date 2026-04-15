@@ -22,3 +22,4 @@ autoscaling:
 
 secrets:
   GH_PERSONAL_ACCESS_TOKEN: "" # Loaded via install-secrets pipeline
+  MCP_API_KEY: "" # Universal MCP key for X-MCP-API-Key auth

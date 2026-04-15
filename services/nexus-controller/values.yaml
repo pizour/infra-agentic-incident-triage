@@ -45,3 +45,4 @@ persistence:
 secrets:
   LANGFUSE_PUBLIC_KEY: ""
   LANGFUSE_SECRET_KEY: ""
+  MCP_API_KEY: ""
