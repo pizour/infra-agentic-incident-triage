@@ -92,15 +92,15 @@ def main():
         service_account_emails=[iam_resources['gke_service_account'].email],
     )
     
-    # 6. Create Public IP Address for Gateway API
-    pulumi.info("Creating public IP address for gateway API...")
-    public_ip_resources = create_public_ip(
-        project_name=config.gcp_project,
-        address_name='k8s-gateway-ip',
-        region=config.gcp_region,
-        description='Public IP address for Kubernetes Gateway API',
-        labels=config.labels,
-    )
+    # # 6. Create Public IP Address for Gateway API
+    # pulumi.info("Creating public IP address for gateway API...")
+    # public_ip_resources = create_public_ip(
+    #     project_name=config.gcp_project,
+    #     address_name='k8s-gateway-ip',
+    #     region=config.gcp_region,
+    #     description='Public IP address for Kubernetes Gateway API',
+    #     labels=config.labels,
+    # )
     
     # 7. Create ArgoCD via Helm
     pulumi.info("Deploying ArgoCD...")
@@ -115,19 +115,19 @@ def main():
     )
     
     # 8. Create Testing VM
-    pulumi.info("Creating testing VM...")
-    vm_resources = create_testing_vm(
-        project_id=config.gcp_project,
-        region=config.gcp_region,
-        zone=config.gke_zone,
-        network_id=network_resources['network'].id,
-        subnet_id=network_resources['subnet'].id,
-        labels=config.labels,
-        username=os.environ.get('VM_USERNAME'),
-        password=os.environ.get('VM_PASSWORD'),
-        pods_cidr=config.pods_cidr,
-        loki_url='http://10.0.15.200:3100/loki/api/v1/push',
-    )
+    # pulumi.info("Creating testing VM...")
+    # vm_resources = create_testing_vm(
+    #     project_id=config.gcp_project,
+    #     region=config.gcp_region,
+    #     zone=config.gke_zone,
+    #     network_id=network_resources['network'].id,
+    #     subnet_id=network_resources['subnet'].id,
+    #     labels=config.labels,
+    #     username=os.environ.get('VM_USERNAME'),
+    #     password=os.environ.get('VM_PASSWORD'),
+    #     pods_cidr=config.pods_cidr,
+    #     loki_url='http://10.0.15.200:3100/loki/api/v1/push',
+    # )
     
     # Stack Outputs
     pulumi.export('cluster_name', cluster_resources['cluster_name'])
@@ -135,10 +135,10 @@ def main():
     pulumi.export('network_name', network_resources['network'].name)
     pulumi.export('subnet_name', network_resources['subnet'].name)
     pulumi.export('artifact_registry_url', artifact_registry_resources['repository_url'])
-    pulumi.export('gateway_ip_address', public_ip_resources['ip_address'])
+    # pulumi.export('gateway_ip_address', public_ip_resources['ip_address'])
     pulumi.export('argocd_namespace', argocd_resources['namespace'])
-    pulumi.export('testing_vm_public_ip', vm_resources['public_ip'])
-    pulumi.export('testing_vm_internal_ip', vm_resources['internal_ip'])
+    # pulumi.export('testing_vm_public_ip', vm_resources['public_ip'])
+    # pulumi.export('testing_vm_internal_ip', vm_resources['internal_ip'])
     
     # Export kubeconfig connection details
     pulumi.export('kubeconfig', pulumi.Output.concat(
