@@ -66,8 +66,6 @@ env:
   LLM_MODEL: "gemini-2.5-flash"
   GUARDRAILS_URL: "http://guardrails.ai-agent.svc.cluster.local:8080"
   ZAMMAD_URL: "http://zammad.zammad.svc.cluster.local:8080"
-  LANGFUSE_PUBLIC_KEY: "pk-lf-..."
-  LANGFUSE_SECRET_KEY: "sk-lf-..."
   LANGFUSE_HOST: "http://langfuse.ai-agent.svc.cluster.local:3000"
 
 # Secrets injected as env vars from K8s Secret
@@ -75,6 +73,8 @@ secrets:
   APP_API_KEY: "" # Loaded via pipeline
   MCP_API_KEY: "" # Loaded via pipeline
   NETBOX_MCP_API_KEY: "" # Loaded via pipeline
+  LANGFUSE_PUBLIC_KEY: ""
+  LANGFUSE_SECRET_KEY: ""
   ZAMMAD_TOKEN: "" # Loaded via pipeline
   ZAMMAD_USER: "" # Loaded via pipeline (admin email for basic auth)
   ZAMMAD_PASS: "" # Loaded via pipeline (admin password for basic auth)

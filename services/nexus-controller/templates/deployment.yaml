@@ -26,6 +26,13 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+            {{- range $key, $value := .Values.secrets }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: ai-agent-secrets
+                  key: {{ $key }}
+            {{- end }}
           volumeMounts:
             {{- if .Values.persistence.enabled }}
             - name: skills-volume

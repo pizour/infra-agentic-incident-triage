@@ -14,3 +14,5 @@ prometheus-fastapi-instrumentator
 slowapi
 kubernetes
 langfuse>=2.0.0
+openinference-instrumentation-langchain
+openinference-instrumentation-openai

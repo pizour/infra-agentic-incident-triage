@@ -33,6 +33,7 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
+from openinference.instrumentation.langchain import LangChainInstrumentor
 from langfuse import Langfuse
 
 resource = Resource.create({SERVICE_NAME: "ai-orchestrator"})
@@ -45,6 +46,9 @@ provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoin
 
 # Initialize Langfuse client (automatically registers with OTEL in v3+)
 langfuse = Langfuse()
+
+# Instrument LangChain (which includes LangGraph)
+LangChainInstrumentor().instrument()
 
 HTTPXClientInstrumentor().instrument()
 # ─────────────────────────────────────────────────────────────────────────────

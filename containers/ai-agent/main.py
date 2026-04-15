@@ -110,7 +110,11 @@ async def github(
                         "path": f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path,
                         "branch": GITHUB_BRANCH
                     }
-                    resp = await client.post(f"{GITHUB_MCP_URL.replace('/sse', '/read_file')}", json=payload)
+                    # Prefer Service name over FQDN if possible, but keep fallback
+                    base_url = GITHUB_MCP_URL.split("/sse")[0]
+                    api_endpoint = f"{base_url}/read_file"
+                    
+                    resp = await client.post(api_endpoint, json=payload)
                     if resp.status_code == 200:
                         content = resp.json().get("content", "Empty file.")
                         span.set_attribute("content_length", len(content))
@@ -156,8 +160,14 @@ async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key))
     logger.info(f"RUNNING AGENT: prompt='{request.prompt[:100]}...'")
     try:
         result = await agent.run(request.prompt)
-        logger.info(f"AGENT RUN COMPLETE: {str(result.output)[:200]}...")
-        return AgentResponse(result=str(result.output))
+        
+        # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
+        output = getattr(result, "output", getattr(result, "data", None))
+        if output is None:
+            raise AttributeError(f"AgentRunResult has neither 'output' nor 'data': {dir(result)}")
+
+        logger.info(f"AGENT RUN COMPLETE: {str(output)[:200]}...")
+        return AgentResponse(result=str(output))
     except HTTPException:
         raise
     except Exception as e:

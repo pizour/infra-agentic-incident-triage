@@ -63,11 +63,11 @@ env:
   ROUTER_API: "http://router-agent.ai-agent.svc.cluster.local:8010/run"
   GENERIC_AGENT_IMAGE: "europe-west4-docker.pkg.dev/ai-incident-triage/gke-artifacts-dev/ai-agent:latest"
   NAMESPACE: "ai-agent"
-  LANGFUSE_PUBLIC_KEY: "pk-lf-..."
-  LANGFUSE_SECRET_KEY: "sk-lf-..."
   LANGFUSE_HOST: "http://langfuse.ai-agent.svc.cluster.local:3000"
   GOOGLE_APPLICATION_CREDENTIALS: "/etc/gcp/sa-key.json"
 
 # Secrets injected as env vars from K8s Secret
 secrets:
   APP_API_KEY: "" 
+  LANGFUSE_PUBLIC_KEY: ""
+  LANGFUSE_SECRET_KEY: ""

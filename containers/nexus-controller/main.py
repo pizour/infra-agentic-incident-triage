@@ -23,13 +23,17 @@ from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from langfuse import Langfuse
 resource = Resource.create({SERVICE_NAME: "nexus-controller"})
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
+
+# Initialize Langfuse (v3+ auto-registers with the global provider set above)
+langfuse = Langfuse()
+
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
-exporter = OTLPSpanExporter(endpoint=endpoint)
-provider.add_span_processor(BatchSpanProcessor(exporter))
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
 provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
 
@@ -102,7 +106,11 @@ async def github(
             if action not in endpoint_map:
                 return f"Error: Unknown action '{action}'"
                 
-            api_endpoint = GITHUB_MCP_URL.replace("/sse", endpoint_map[action])
+            # Prefer Service name over FQDN if possible, but keep fallback
+            base_url = GITHUB_MCP_URL.split("/sse")[0]
+            api_endpoint = f"{base_url}{endpoint_map[action]}"
+            
+            logger.debug(f"Calling GitHub MCP endpoint: {api_endpoint}")
             resp = await client.post(api_endpoint, json=payload)
             
             if resp.status_code == 200:
@@ -128,8 +136,13 @@ async def run_nexus_controller(request: RunRequest):
         prompt = f"Goal: {request.input}\nContext: {request.context_summary}\nLatest Validation: {json.dumps(request.latest_validation or {})}"
         result = await agent.run(prompt)
         
-        logger.info(f"ROUTING DECISION COMPLETE: {result.output.action}")
-        return result.output.model_dump()
+        # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
+        decision = getattr(result, "output", getattr(result, "data", None))
+        if decision is None:
+            raise AttributeError(f"AgentRunResult has neither 'output' nor 'data': {dir(result)}")
+
+        logger.info(f"ROUTING DECISION COMPLETE: {decision.action}")
+        return decision.model_dump()
 
     except Exception as e:
         logger.error(f"Controller execution failed: {e}")
