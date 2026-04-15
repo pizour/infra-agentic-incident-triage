@@ -35,7 +35,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 from openinference.instrumentation.langchain import LangChainInstrumentor
-from langfuse.opentelemetry import LangfuseExporter
+# from langfuse.opentelemetry import LangfuseExporter
 
 resource = Resource.create({SERVICE_NAME: "ai-orchestrator"})
 provider = TracerProvider(resource=resource)
@@ -47,18 +47,18 @@ endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.m
 provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
 
 # Langfuse native exporter (uses /api/public/ingestion, works with Langfuse v2+)
-langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
-langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-
-if langfuse_public_key and langfuse_secret_key:
-    langfuse_exporter = LangfuseExporter(
-        public_key=langfuse_public_key,
-        secret_key=langfuse_secret_key,
-        host=langfuse_host,
-    )
-    provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
-    logger.info(f"Langfuse exporter initialized (native SDK) targeting {langfuse_host}")
+# langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
+# langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+# langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+#
+# if langfuse_public_key and langfuse_secret_key:
+#     langfuse_exporter = LangfuseExporter(
+#         public_key=langfuse_public_key,
+#         secret_key=langfuse_secret_key,
+#         host=langfuse_host,
+#     )
+#     provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
+#     logger.info(f"Langfuse exporter initialized (native SDK) targeting {langfuse_host}")
 
 # Instrument LangChain (which includes LangGraph)
 LangChainInstrumentor().instrument()
