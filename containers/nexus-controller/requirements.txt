@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-pydantic-ai[vertexai,openai]>=0.0.18
+pydantic-ai>=0.0.18
 python-dotenv
 loguru
 httpx
@@ -14,4 +14,4 @@ opentelemetry-instrumentation-httpx
 prometheus_fastapi_instrumentator
 slowapi
 mcp
-langfuse[otel]<3.0.0
+langfuse==2.36.0

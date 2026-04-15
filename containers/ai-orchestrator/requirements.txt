@@ -13,6 +13,6 @@ opentelemetry-instrumentation-httpx
 prometheus-fastapi-instrumentator
 slowapi
 kubernetes
-langfuse[otel]<3.0.0
+langfuse==2.36.0
 openinference-instrumentation-langchain
 openinference-instrumentation-openai
