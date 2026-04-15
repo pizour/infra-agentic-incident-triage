@@ -32,11 +32,11 @@ def create_service_accounts(project_name: str, cluster_name: str, region: str) -
     
     iam_members = []
     for idx, role in enumerate(roles):
-        iam_member = gcp.projects.IAMBinding(
+        iam_member = gcp.projects.IAMMember(
             f'{cluster_name}-sa-{idx}',
             project=project_name,
             role=role,
-            members=[gke_sa.email.apply(lambda email: f'serviceAccount:{email}')],
+            member=gke_sa.email.apply(lambda email: f'serviceAccount:{email}'),
         )
         iam_members.append(iam_member)
     

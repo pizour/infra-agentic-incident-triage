@@ -107,7 +107,7 @@ scrape_configs:
           __path__: /var/log/auth.log
     pipeline_stages:
       - regex:
-          expression: '.*sshd.*(?:Failed password|Accepted password|Invalid user).*from (?P<source_ip>\d+\.\d+\.\d+\.\d+).*'
+          expression: r'.*sshd.*(?:Failed password|Accepted password|Invalid user).*from (?P<source_ip>\d+\.\d+\.\d+\.\d+).*'
       - labels:
           source_ip:
 PROMTAILEOF
