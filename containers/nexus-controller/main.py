@@ -67,8 +67,7 @@ ROUTER_SYSTEM_PROMPT = (
 
 agent = Agent(
     model,
-    instrument=True,
-    result_type=NexusRoutingDecision,
+    output_type=NexusRoutingDecision,
     system_prompt=ROUTER_SYSTEM_PROMPT,
 )
 

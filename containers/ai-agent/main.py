@@ -79,7 +79,6 @@ DEFAULT_SYSTEM_PROMPT = (
 
 agent = Agent(
     model,
-    instrument=True,
     system_prompt=os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT),
 )
 
