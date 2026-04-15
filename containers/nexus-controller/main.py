@@ -67,7 +67,7 @@ ROUTER_SYSTEM_PROMPT = (
 
 agent = Agent(
     model,
-    result_type=NexusRoutingDecision,
+    output_type=NexusRoutingDecision,
     system_prompt=ROUTER_SYSTEM_PROMPT,
 )
 
@@ -128,8 +128,8 @@ async def run_nexus_controller(request: RunRequest):
         prompt = f"Goal: {request.input}\nContext: {request.context_summary}\nLatest Validation: {json.dumps(request.latest_validation or {})}"
         result = await agent.run(prompt)
         
-        logger.info(f"ROUTING DECISION COMPLETE: {result.data.action}")
-        return result.data.model_dump()
+        logger.info(f"ROUTING DECISION COMPLETE: {result.output.action}")
+        return result.output.model_dump()
 
     except Exception as e:
         logger.error(f"Controller execution failed: {e}")
