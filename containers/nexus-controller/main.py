@@ -1,6 +1,7 @@
 import os
 import json
 import httpx
+import base64
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -34,6 +35,21 @@ langfuse = Langfuse()
 
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+
+# Langfuse OTLP Export
+langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
+langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+
+if langfuse_public_key and langfuse_secret_key:
+    # Langfuse OTLP requires Basic Auth: base64(public_key:secret_key)
+    auth_str = f"{langfuse_public_key}:{langfuse_secret_key}"
+    encoded_auth = base64.b64encode(auth_str.encode()).decode()
+    lf_headers = {"Authorization": f"Basic {encoded_auth}"}
+    lf_endpoint = f"{langfuse_host}/api/public/otlp/v1/traces"
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
+    logger.info(f"Langfuse OTLP exporter initialized targeting {lf_endpoint}")
+
 provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
 
@@ -73,6 +89,7 @@ agent = Agent(
     model,
     output_type=NexusRoutingDecision,
     system_prompt=ROUTER_SYSTEM_PROMPT,
+    instrument=True,
 )
 
 @agent.tool

@@ -10,6 +10,7 @@ from kubernetes import client, config
 
 from loguru import logger
 import logging
+import base64
 
 # --- Logging Filter to suppress /health logs ---
 class HealthCheckFilter(logging.Filter):
@@ -41,8 +42,21 @@ provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
 
-endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://phoenix:6006/v1/traces")
+endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+
+# Langfuse OTLP Export
+langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
+langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+
+if langfuse_public_key and langfuse_secret_key:
+    auth_str = f"{langfuse_public_key}:{langfuse_secret_key}"
+    encoded_auth = base64.b64encode(auth_str.encode()).decode()
+    lf_headers = {"Authorization": f"Basic {encoded_auth}"}
+    lf_endpoint = f"{langfuse_host}/api/public/otlp/v1/traces"
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
+    logger.info(f"Langfuse OTLP exporter initialized targeting {lf_endpoint}")
 
 # Initialize Langfuse client (automatically registers with OTEL in v3+)
 langfuse = Langfuse()

@@ -1,5 +1,6 @@
 import os
 import httpx
+import base64
 from typing import Optional, List
 from dotenv import load_dotenv
 
@@ -28,9 +29,21 @@ trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
 
 # Configure OTLP Exporter (sending to Phoenix)
-endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://phoenix:6006/v1/traces")
+endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 exporter = OTLPSpanExporter(endpoint=endpoint)
 provider.add_span_processor(BatchSpanProcessor(exporter))
+
+# Langfuse OTLP Export
+langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
+langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+
+if langfuse_public_key and langfuse_secret_key:
+    auth_str = f"{langfuse_public_key}:{langfuse_secret_key}"
+    encoded_auth = base64.b64encode(auth_str.encode()).decode()
+    lf_headers = {"Authorization": f"Basic {encoded_auth}"}
+    lf_endpoint = f"{langfuse_host}/api/public/otlp/v1/traces"
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
 
 # Configure Langfuse SpanProcessor (sending to Langfuse)
 # If env vars LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST are set, it will auto-config
