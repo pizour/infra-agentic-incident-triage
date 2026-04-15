@@ -35,31 +35,30 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 from openinference.instrumentation.langchain import LangChainInstrumentor
-from langfuse import Langfuse
+from langfuse.opentelemetry import LangfuseExporter
 
 resource = Resource.create({SERVICE_NAME: "ai-orchestrator"})
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
 
+# Arize Phoenix OTLP Export
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
 
-# Langfuse OTLP Export
+# Langfuse native exporter (uses /api/public/ingestion, works with Langfuse v2+)
 langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
 langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
 langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
 
 if langfuse_public_key and langfuse_secret_key:
-    auth_str = f"{langfuse_public_key}:{langfuse_secret_key}"
-    encoded_auth = base64.b64encode(auth_str.encode()).decode()
-    lf_headers = {"Authorization": f"Basic {encoded_auth}"}
-    lf_endpoint = f"{langfuse_host}/api/public/otlp/v1/traces"
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
-    logger.info(f"Langfuse OTLP exporter initialized targeting {lf_endpoint}")
-
-# Initialize Langfuse client (automatically registers with OTEL in v3+)
-langfuse = Langfuse()
+    langfuse_exporter = LangfuseExporter(
+        public_key=langfuse_public_key,
+        secret_key=langfuse_secret_key,
+        host=langfuse_host,
+    )
+    provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
+    logger.info(f"Langfuse exporter initialized (native SDK) targeting {langfuse_host}")
 
 # Instrument LangChain (which includes LangGraph)
 LangChainInstrumentor().instrument()

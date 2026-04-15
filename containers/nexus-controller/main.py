@@ -23,32 +23,34 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
+from mcp import ClientSession
+from mcp.client.sse import sse_client
 
 from langfuse import Langfuse
+from langfuse.opentelemetry import LangfuseExporter
+
 resource = Resource.create({SERVICE_NAME: "nexus-controller"})
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
 
-# Initialize Langfuse (v3+ auto-registers with the global provider set above)
-langfuse = Langfuse()
-
+# Arize Phoenix OTLP Export
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
 
-# Langfuse OTLP Export
+# Langfuse native exporter (uses /api/public/ingestion, works with Langfuse v2+)
 langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
 langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
 langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
 
 if langfuse_public_key and langfuse_secret_key:
-    # Langfuse OTLP requires Basic Auth: base64(public_key:secret_key)
-    auth_str = f"{langfuse_public_key}:{langfuse_secret_key}"
-    encoded_auth = base64.b64encode(auth_str.encode()).decode()
-    lf_headers = {"Authorization": f"Basic {encoded_auth}"}
-    lf_endpoint = f"{langfuse_host}/api/public/otlp/v1/traces"
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
-    logger.info(f"Langfuse OTLP exporter initialized targeting {lf_endpoint}")
+    langfuse_exporter = LangfuseExporter(
+        public_key=langfuse_public_key,
+        secret_key=langfuse_secret_key,
+        host=langfuse_host,
+    )
+    provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
+    logger.info(f"Langfuse exporter initialized (native SDK) targeting {langfuse_host}")
 
 provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
@@ -100,52 +102,49 @@ async def github(
     path: Optional[str] = None,
 ) -> str:
     """
-    Interact with the GitHub repository.
+    Interact with the GitHub repository via MCP protocol (SSE).
     Actions:
-      - list_files: List files in a directory (requires 'path')
-      - read_file: Read content of a file (requires 'path')
+      - list_files / list_directory_contents: List files in a directory
+      - read_file / get_file_contents: Read content of a file
     """
-    logger.info(f"GITHUB TOOL CALL: action={action}, path={path}")
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            payload = {
-                "owner": GITHUB_REPO.split('/')[0],
-                "repo": GITHUB_REPO.split('/')[1],
-                "path": path or ".",
-                "branch": GITHUB_BRANCH
-            }
-            
-            # Map action to endpoint
-            endpoint_map = {
-                "list_files": "/list_files",
-                "read_file": "/read_file"
-            }
-            
-            if action not in endpoint_map:
-                return f"Error: Unknown action '{action}'"
-                
-            # Prefer Service name over FQDN if possible, but keep fallback
-            base_url = GITHUB_MCP_URL.split("/sse")[0]
-            api_endpoint = f"{base_url}{endpoint_map[action]}"
-            
-            logger.debug(f"Calling GitHub MCP endpoint: {api_endpoint}")
-            
-            headers = {}
-            if MCP_API_KEY:
-                headers["X-MCP-API-Key"] = MCP_API_KEY
-                
-            resp = await client.post(api_endpoint, json=payload, headers=headers)
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                if action == "list_files":
-                    files: List[Dict[str, Any]] = data.get("files", [])
-                    return "\n".join([str(f.get('raw_path', '')) for f in files])
-                return str(data.get("content", "Empty file."))
-            
-            return f"Error calling GitHub MCP ({action}) status={resp.status_code}: {resp.text}"
-        except Exception as e:
-            return f"Exception connecting to GitHub MCP: {str(e)}"
+    logger.info(f"GITHUB MCP CALL: action={action}, path={path}")
+    try:
+        params = {
+            "owner": GITHUB_REPO.split('/')[0],
+            "repo": GITHUB_REPO.split('/')[1],
+            "path": path or "."
+        }
+
+        # Map caller actions to official GitHub MCP server tool names
+        tool_map = {
+            "list_files": "list_directory_contents",
+            "read_file": "get_file_contents",
+            "list_directory_contents": "list_directory_contents",
+            "get_file_contents": "get_file_contents",
+        }
+        target_tool = tool_map.get(action, action)
+
+        async with sse_client(GITHUB_MCP_URL) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                logger.debug(f"MCP tool='{target_tool}' params={params}")
+                result = await session.call_tool(target_tool, arguments=params)
+
+                if result.isError:
+                    return f"MCP Error: {result.content}"
+
+                parts = []
+                for item in result.content:
+                    if hasattr(item, 'text'):
+                        parts.append(item.text or "")
+                    elif isinstance(item, dict) and 'text' in item:
+                        parts.append(item['text'] or "")
+                    else:
+                        parts.append(str(item))
+                return "\n".join(parts) if parts else "No content returned."
+    except Exception as e:
+        logger.error(f"GitHub MCP call failed: {e}")
+        return f"Exception during GitHub MCP call: {str(e)}"
 
 class RunRequest(BaseModel):
     input: str
