@@ -47,13 +47,21 @@ def create_service_accounts(project_name: str, cluster_name: str, region: str) -
         display_name=f'Service account for {cluster_name} pod workloads',
     )
     
-    # Grant aiplatform.user to the pods service account for Vertex AI inference
-    ai_member = gcp.projects.IAMMember(
-        f'{cluster_name}-pods-ai-user',
-        project=project_name,
-        role='roles/aiplatform.user',
-        member=pods_sa.email.apply(lambda email: f'serviceAccount:{email}'),
-    )
+    # Grant necessary roles to pods service account for Vertex AI and API usage
+    pod_roles = [
+        'roles/aiplatform.user',
+        'roles/serviceusage.serviceUsageConsumer',
+    ]
+    
+    pod_iam_members = []
+    for idx, role in enumerate(pod_roles):
+        member = gcp.projects.IAMMember(
+            f'{cluster_name}-pods-sa-{idx}',
+            project=project_name,
+            role=role,
+            member=pods_sa.email.apply(lambda email: f'serviceAccount:{email}'),
+        )
+        pod_iam_members.append(member)
 
     # IAM binding for Workload Identity
     workload_identity_binding = gcp.serviceaccount.IAMBinding(
@@ -74,6 +82,6 @@ def create_service_accounts(project_name: str, cluster_name: str, region: str) -
         'gke_service_account': gke_sa,
         'pods_service_account': pods_sa,
         'iam_members': iam_members,
-        'pods_ai_member': ai_member,
+        'pod_iam_members': pod_iam_members,
         'workload_identity_binding': workload_identity_binding,
     }
