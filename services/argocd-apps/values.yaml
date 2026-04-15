@@ -25,7 +25,7 @@ applications:
     path: services/github-mcp-server
     namespace: ai-agent
   - name: router-agent
-    path: services/router-agent
+    path: services/nexus-controller
     namespace: ai-agent
   - name: ai-orchestrator
     path: services/ai-orchestrator
