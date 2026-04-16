@@ -230,7 +230,11 @@ async def node_nexus_controller(state: CompleteState) -> dict:
         }
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.post(ROUTER_API, json=payload, timeout=60.0)
+                # Timeout: 90 seconds max for nexus-controller to respond
+                response = await asyncio.wait_for(
+                    client.post(ROUTER_API, json=payload, timeout=30.0),
+                    timeout=45.0
+                )
                 response.raise_for_status()
                 data = response.json()
                 action = data.get("action", "finish")
@@ -238,6 +242,10 @@ async def node_nexus_controller(state: CompleteState) -> dict:
                 feedback = data.get("feedback", "")
                 logger.info(f"CONTROLLER DECISION: action={action}, target={target_agent}")
                 return {"next_action": action, "next_agent": target_agent, "next_instructions": feedback}
+            except asyncio.TimeoutError:
+                logger.error("CONTROLLER TIMEOUT: nexus-controller exceeded 45 seconds. Finishing workflow.")
+                span.set_attribute("timeout", True)
+                return {"next_action": "finish"}
             except Exception as e:
                 logger.error(f"Controller call failed: {e}")
                 span.record_exception(e)
