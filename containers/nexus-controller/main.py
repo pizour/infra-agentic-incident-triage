@@ -150,7 +150,7 @@ async def github(
     Call GitHub MCP tools. The agent specifies which tool to use.
     Examples:
       - tool='get_file_contents', path='/skills/nexus_routing/skill.md'
-      - tool='get_repository_tree', path='agents/'
+      - tool='get_file_contents', path='agents/'  (works for directories too)
     """
     logger.info(f"GITHUB TOOL CALL: tool={tool}, path={path}")
 
@@ -170,13 +170,7 @@ async def github(
         "repo": repo,
     }
 
-    if tool == "get_file_contents":
-        arguments["path"] = path
-    elif tool == "get_repository_tree":
-        arguments["path_filter"] = path
-        arguments["recursive"] = False
-    else:
-        arguments["path"] = path
+    arguments["path"] = path
 
     max_retries = 3
     for attempt in range(1, max_retries + 1):

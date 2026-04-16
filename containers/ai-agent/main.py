@@ -162,10 +162,8 @@ async def github(
 
         owner, repo = GITHUB_REPO.split('/')
 
-        # Map action to MCP tool name
-        mcp_tool_name = action  # Agent passes the actual tool name
-        if action == "read_skill":
-            mcp_tool_name = "get_file_contents"
+        # All GitHub file/directory reads use get_file_contents (works for both)
+        mcp_tool_name = "get_file_contents"
 
         if not path:
             return "Error: 'path' required"
@@ -175,21 +173,15 @@ async def github(
         if not gh_token:
             gh_token = GH_PERSONAL_ACCESS_TOKEN
 
-        # Build arguments based on tool
+        # For read_skill, adjust path if needed
+        if action == "read_skill":
+            path = f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path
+
         arguments = {
             "owner": owner,
             "repo": repo,
+            "path": path,
         }
-
-        if mcp_tool_name == "get_file_contents":
-            # For read_skill, adjust path if needed
-            file_path = f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path
-            arguments["path"] = file_path
-        elif mcp_tool_name == "get_repository_tree":
-            arguments["path_filter"] = path
-            arguments["recursive"] = False
-        else:
-            arguments["path"] = path
 
         max_retries = 3
         for attempt in range(1, max_retries + 1):
