@@ -44,7 +44,12 @@ tracer = trace.get_tracer(__name__)
 
 # Arize Phoenix OTLP Export
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
-provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+try:
+    phoenix_exporter = OTLPSpanExporter(endpoint=endpoint)
+    provider.add_span_processor(BatchSpanProcessor(phoenix_exporter))
+    logger.info(f"Phoenix OTLP exporter initialized: {endpoint}")
+except Exception as e:
+    logger.error(f"Failed to initialize Phoenix exporter: {e}")
 
 # Langfuse native exporter (uses /api/public/ingestion, works with Langfuse v2+)
 # langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
@@ -101,6 +106,11 @@ Instrumentator().instrument(app).expose(app)
 async def startup_event():
     setup_logging()
     logger.info("AI-Orchestrator refined logging and connectivity initialized")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Flushing OpenTelemetry spans to Phoenix...")
+    provider.force_flush(timeout_millis=5000)
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 API_KEY_NAME = "X-API-Key"

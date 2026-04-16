@@ -30,8 +30,11 @@ tracer = trace.get_tracer(__name__)
 
 # Configure OTLP Exporter (sending to Phoenix)
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
-exporter = OTLPSpanExporter(endpoint=endpoint)
-provider.add_span_processor(BatchSpanProcessor(exporter))
+try:
+    exporter = OTLPSpanExporter(endpoint=endpoint)
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+except Exception as e:
+    pass  # Will log after logger is imported
 
 # Langfuse OTLP Export
 langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
@@ -98,6 +101,8 @@ agent = Agent(
 
 from loguru import logger
 
+logger.info(f"Phoenix OTLP exporter initialized: {endpoint}")
+
 @agent.tool
 async def github(
     ctx: RunContext[None],
@@ -116,25 +121,39 @@ async def github(
         if action == "read_skill":
             if not path: return "Error: 'path' required for read_skill"
             async with httpx.AsyncClient(timeout=30.0) as client:
-                try:
-                    payload = {
-                        "owner": GITHUB_REPO.split('/')[0],
-                        "repo": GITHUB_REPO.split('/')[1],
-                        "path": f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path,
-                        "branch": GITHUB_BRANCH
-                    }
-                    # Prefer Service name over FQDN if possible, but keep fallback
-                    base_url = GITHUB_MCP_URL.split("/sse")[0]
-                    api_endpoint = f"{base_url}/read_file"
-                    
-                    resp = await client.post(api_endpoint, json=payload)
-                    if resp.status_code == 200:
-                        content = resp.json().get("content", "Empty file.")
-                        span.set_attribute("content_length", len(content))
-                        return content
-                    return f"Error reading GitHub skill: {resp.text}"
-                except Exception as e:
-                    return f"Exception connecting to GitHub MCP: {str(e)}"
+                headers = {}
+                if MCP_API_KEY:
+                    headers["X-MCP-API-Key"] = MCP_API_KEY
+
+                max_retries = 3
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        payload = {
+                            "owner": GITHUB_REPO.split('/')[0],
+                            "repo": GITHUB_REPO.split('/')[1],
+                            "path": f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path,
+                            "branch": GITHUB_BRANCH
+                        }
+                        # Prefer Service name over FQDN if possible, but keep fallback
+                        base_url = GITHUB_MCP_URL.split("/sse")[0]
+                        api_endpoint = f"{base_url}/read_file"
+
+                        resp = await client.post(api_endpoint, json=payload, headers=headers)
+                        if resp.status_code == 200:
+                            content = resp.json().get("content", "Empty file.")
+                            span.set_attribute("content_length", len(content))
+                            return content
+                        elif attempt < max_retries:
+                            logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} failed: {resp.status_code}. Retrying...")
+                            continue
+                        else:
+                            return f"Error reading GitHub skill (failed after {max_retries} attempts): {resp.status_code} - {resp.text}"
+                    except Exception as e:
+                        if attempt < max_retries:
+                            logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} exception: {str(e)}. Retrying...")
+                            continue
+                        else:
+                            return f"Exception connecting to GitHub MCP (failed after {max_retries} attempts): {str(e)}"
 
         return f"Unknown action: {action}"
 
@@ -162,6 +181,11 @@ class AgentRequest(BaseModel):
 
 class AgentResponse(BaseModel):
     result: str
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Flushing OpenTelemetry spans to Phoenix...")
+    provider.force_flush(timeout_millis=5000)
 
 @app.get("/")
 async def health_check():

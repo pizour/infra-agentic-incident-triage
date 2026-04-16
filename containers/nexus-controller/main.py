@@ -36,7 +36,12 @@ tracer = trace.get_tracer(__name__)
 
 # Arize Phoenix OTLP Export
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
-provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+try:
+    phoenix_exporter = OTLPSpanExporter(endpoint=endpoint)
+    provider.add_span_processor(BatchSpanProcessor(phoenix_exporter))
+    logger.info(f"Phoenix OTLP exporter initialized: {endpoint}")
+except Exception as e:
+    logger.error(f"Failed to initialize Phoenix exporter: {e}")
 
 # Langfuse native exporter (uses /api/public/ingestion, works with Langfuse v2+)
 # langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
@@ -108,48 +113,68 @@ async def github(
       - read_file / get_file_contents: Read content of a file
     """
     logger.info(f"GITHUB MCP CALL: action={action}, path={path}")
-    try:
-        params = {
-            "owner": GITHUB_REPO.split('/')[0],
-            "repo": GITHUB_REPO.split('/')[1],
-            "path": path or "."
-        }
 
-        # Map caller actions to official GitHub MCP server tool names
-        tool_map = {
-            "list_files": "list_directory_contents",
-            "read_file": "get_file_contents",
-            "list_directory_contents": "list_directory_contents",
-            "get_file_contents": "get_file_contents",
-        }
-        target_tool = tool_map.get(action, action)
+    params = {
+        "owner": GITHUB_REPO.split('/')[0],
+        "repo": GITHUB_REPO.split('/')[1],
+        "path": path or "."
+    }
 
-        async with sse_client(GITHUB_MCP_URL) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                logger.debug(f"MCP tool='{target_tool}' params={params}")
-                result = await session.call_tool(target_tool, arguments=params)
+    # Map caller actions to official GitHub MCP server tool names
+    tool_map = {
+        "list_files": "list_directory_contents",
+        "read_file": "get_file_contents",
+        "list_directory_contents": "list_directory_contents",
+        "get_file_contents": "get_file_contents",
+    }
+    target_tool = tool_map.get(action, action)
 
-                if result.isError:
-                    return f"MCP Error: {result.content}"
+    # Retry logic - max 3 attempts
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Prepare headers with MCP API key if available
+            headers = {}
+            if MCP_API_KEY:
+                headers["X-MCP-API-Key"] = MCP_API_KEY
 
-                parts = []
-                for item in result.content:
-                    if hasattr(item, 'text'):
-                        parts.append(item.text or "")
-                    elif isinstance(item, dict) and 'text' in item:
-                        parts.append(item['text'] or "")
-                    else:
-                        parts.append(str(item))
-                return "\n".join(parts) if parts else "No content returned."
-    except Exception as e:
-        logger.error(f"GitHub MCP call failed: {e}")
-        return f"Exception during GitHub MCP call: {str(e)}"
+            async with sse_client(GITHUB_MCP_URL, headers=headers) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    logger.debug(f"MCP tool='{target_tool}' params={params}")
+                    result = await session.call_tool(target_tool, arguments=params)
+
+                    if result.isError:
+                        if attempt < max_retries:
+                            logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {result.content}. Retrying...")
+                            continue
+                        return f"MCP Error (failed after {max_retries} attempts): {result.content}"
+
+                    parts = []
+                    for item in result.content:
+                        if hasattr(item, 'text'):
+                            parts.append(item.text or "")
+                        elif isinstance(item, dict) and 'text' in item:
+                            parts.append(item['text'] or "")
+                        else:
+                            parts.append(str(item))
+                    return "\n".join(parts) if parts else "No content returned."
+        except Exception as e:
+            if attempt < max_retries:
+                logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} failed: {str(e)}. Retrying...")
+                continue
+            logger.error(f"GitHub MCP call failed after {max_retries} attempts: {e}")
+            return f"Exception during GitHub MCP call (failed after {max_retries} attempts): {str(e)}"
 
 class RunRequest(BaseModel):
     input: str
     context_summary: str = ""
     latest_validation: Optional[Dict[str, Any]] = None
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Flushing OpenTelemetry spans to Phoenix...")
+    provider.force_flush(timeout_millis=5000)
 
 @app.post("/run")
 async def run_nexus_controller(request: RunRequest):
