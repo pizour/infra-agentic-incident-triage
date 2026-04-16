@@ -147,11 +147,12 @@ class CompleteState(TypedDict):
     next_instructions: str
     retry_count: int  # Track retries; max 3 attempts per agent
     agent_env_vars: Optional[dict]  # env_vars from agent .md frontmatter, set by nexus-controller
+    spawned_pods: List[str]  # pod names to clean up at end of workflow
 
 
 # ── Kubernetes Pod Lifecycle Helper ───────────────────────────────────────────
 
-async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], system_prompt: Optional[str] = None) -> str:
+async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], system_prompt: Optional[str] = None) -> tuple:
     pod_name = f"agent-{agent_id.replace('_', '-')}-{int(time.time())}"
     port = 8000
     logger.info(f"SPAWNING POD: {pod_name} for agent={agent_id}")
@@ -240,16 +241,11 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
             body["system_prompt"] = system_prompt
         async with httpx.AsyncClient(timeout=300.0) as client_http:
             resp = await client_http.post(agent_url, json=body, headers={"X-API-Key": agent_api_key})
-            resp.raise_for_status()
-            logger.info(f"AGENT {agent_id} RESPONSE RECEIVED")
-            return resp.json().get("result", "")
-            
-    finally:
-        try:
-            logger.info(f"DELETING POD: {pod_name}")
-            core_v1.delete_namespaced_pod(name=pod_name, namespace=NAMESPACE, grace_period_seconds=0)
-        except Exception as e:
-            logger.error(f"Error deleting pod {pod_name}: {e}")
+            logger.info(f"AGENT {agent_id} HTTP {resp.status_code}")
+            if not resp.is_success:
+                logger.error(f"AGENT {agent_id} error body: {resp.text[:500]}")
+                return pod_name, json.dumps({"agent_key": agent_id, "error": f"HTTP {resp.status_code}: {resp.text[:300]}"})
+            return pod_name, resp.json().get("result", "")
 
 
 # ── Node: Nexus Controller ──────────────────────────────────────────────────────────
@@ -336,8 +332,9 @@ async def node_executor(state: CompleteState) -> dict:
         agent_env_vars = dict(state.get("agent_env_vars") or {})
         system_prompt = agent_env_vars.pop("SYSTEM_PROMPT", None)
 
+        pod_name = None
         try:
-            result_str = await run_agent_pod(str(agent_id), prompt, agent_env_vars, system_prompt=system_prompt)
+            pod_name, result_str = await run_agent_pod(str(agent_id), prompt, agent_env_vars, system_prompt=system_prompt)
         except Exception as e:
             logger.error(f"Pod failed for agent {agent_id}: {e}")
             span.record_exception(e)
@@ -346,22 +343,38 @@ async def node_executor(state: CompleteState) -> dict:
         # Store raw result — no parsing, no scoring. Nexus-controller evaluates.
         history = list(state.get("validation_history") or [])
         results = dict(state.get("results") or {})  # type: ignore[arg-type]
+        pods = list(state.get("spawned_pods") or [])
         results[str(agent_id)] = result_str
         history.append({"agent_key": str(agent_id), "raw": result_str, "attempt": current_retry})
+        if pod_name:
+            pods.append(pod_name)
 
         return {
             "results": results,
             "latest_validation": {"agent_key": str(agent_id), "raw": result_str, "attempt": current_retry},
             "validation_history": history,
             "retry_count": current_retry,
+            "spawned_pods": pods,
         }
+
+# ── Node: Cleanup ─────────────────────────────────────────────────────────────
+async def node_cleanup(state: CompleteState) -> dict:
+    """Delete all spawned agent pods at the end of the workflow."""
+    pods = state.get("spawned_pods") or []
+    for pod_name in pods:
+        try:
+            logger.info(f"CLEANUP: deleting pod {pod_name}")
+            core_v1.delete_namespaced_pod(name=pod_name, namespace=NAMESPACE, grace_period_seconds=0)
+        except Exception as e:
+            logger.warning(f"CLEANUP: could not delete pod {pod_name}: {e}")
+    return {}
 
 # ── Routing ───────────────────────────────────────────────────────────────────
 def route_from_controller(state: CompleteState) -> str:
     """After nexus_controller decides: execute the suggested agent or finish."""
     action = state.get("next_action", "finish")
     if action == "finish":
-        return END
+        return "cleanup"
     return "execute"
 
 # ── Graph compilation ─────────────────────────────────────────────────────────
@@ -369,15 +382,16 @@ def _build_graph() -> StateGraph:
     g = StateGraph(CompleteState)
     g.add_node("nexus_controller", node_nexus_controller)
     g.add_node("execute", node_executor)
+    g.add_node("cleanup", node_cleanup)
 
     g.set_entry_point("nexus_controller")
     g.add_conditional_edges(
         "nexus_controller",
         route_from_controller,
-        {"execute": "execute", END: END},
+        {"execute": "execute", "cleanup": "cleanup"},
     )
-    # All agent results always go back to nexus_controller for re-evaluation
     g.add_edge("execute", "nexus_controller")
+    g.add_edge("cleanup", END)
 
     return g.compile()
 
@@ -409,7 +423,9 @@ async def run_task(request: TaskRequest):
         "next_action": "",
         "next_agent": None,
         "next_instructions": "",
-        "retry_count": 0
+        "retry_count": 0,
+        "agent_env_vars": None,
+        "spawned_pods": [],
     }
     
     with tracer.start_as_current_span("ai-orchestrator.task.execution") as span:
@@ -448,7 +464,9 @@ async def handle_alert(request: Request, payload: dict):
         "next_action": "",
         "next_agent": None,
         "next_instructions": "",
-        "retry_count": 0
+        "retry_count": 0,
+        "agent_env_vars": None,
+        "spawned_pods": [],
     }
 
     with tracer.start_as_current_span("ai-orchestrator.alert.orchestration") as span:
