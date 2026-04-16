@@ -291,8 +291,8 @@ async def run_nexus_controller(request: RunRequest):
     logger.info(f"NEXUS CONTROLLER REQUEST: {request.input[:100]}...")
     try:
         prompt = f"Goal: {request.input}\nContext: {request.context_summary}\nLatest Validation: {json.dumps(request.latest_validation or {})}"
-        result = await agent.run(prompt)
-        
+        result = await asyncio.wait_for(agent.run(prompt), timeout=80.0)
+
         # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
         decision = getattr(result, "output", getattr(result, "data", None))
         if decision is None:
@@ -301,6 +301,9 @@ async def run_nexus_controller(request: RunRequest):
         logger.info(f"ROUTING DECISION COMPLETE: {decision.action}")
         return decision.model_dump()
 
+    except asyncio.TimeoutError:
+        logger.error("NEXUS CONTROLLER: agent.run exceeded 80s timeout, returning finish")
+        return NexusRoutingDecision(action="finish", feedback="Routing decision timed out", target_agent=None).model_dump()
     except Exception as e:
         logger.error(f"Controller execution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

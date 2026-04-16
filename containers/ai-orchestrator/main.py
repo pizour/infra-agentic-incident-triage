@@ -228,13 +228,10 @@ async def node_nexus_controller(state: CompleteState) -> dict:
             "context_summary": str(state.get("context", {})),
             "latest_validation": state.get("latest_validation")
         }
-        async with httpx.AsyncClient() as client:
+        # 90s total: nexus-controller does 2 LLM calls + 1 GitHub MCP call
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=90.0, write=10.0, pool=5.0)) as client:
             try:
-                # Timeout: 90 seconds max for nexus-controller to respond
-                response = await asyncio.wait_for(
-                    client.post(ROUTER_API, json=payload, timeout=30.0),
-                    timeout=45.0
-                )
+                response = await client.post(ROUTER_API, json=payload)
                 response.raise_for_status()
                 data = response.json()
                 action = data.get("action", "finish")
@@ -242,8 +239,8 @@ async def node_nexus_controller(state: CompleteState) -> dict:
                 feedback = data.get("feedback", "")
                 logger.info(f"CONTROLLER DECISION: action={action}, target={target_agent}")
                 return {"next_action": action, "next_agent": target_agent, "next_instructions": feedback}
-            except asyncio.TimeoutError:
-                logger.error("CONTROLLER TIMEOUT: nexus-controller exceeded 45 seconds. Finishing workflow.")
+            except httpx.TimeoutException as e:
+                logger.error(f"CONTROLLER TIMEOUT: nexus-controller exceeded timeout. Finishing workflow. {e}")
                 span.set_attribute("timeout", True)
                 return {"next_action": "finish"}
             except Exception as e:
