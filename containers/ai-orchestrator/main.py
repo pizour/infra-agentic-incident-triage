@@ -262,7 +262,7 @@ async def node_nexus_controller(state: CompleteState) -> dict:
             "latest_validation": state.get("latest_validation")
         }
         # 90s total: nexus-controller does 2 LLM calls + 1 GitHub MCP call
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=90.0, write=10.0, pool=5.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=200.0, write=10.0, pool=5.0)) as client:
             try:
                 response = await client.post(ROUTER_API, json=payload)
                 response.raise_for_status()

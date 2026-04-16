@@ -294,7 +294,7 @@ async def run_nexus_controller(request: RunRequest):
     logger.info(f"NEXUS CONTROLLER REQUEST: {request.input[:100]}...")
     try:
         prompt = f"Goal: {request.input}\nContext: {request.context_summary}\nLatest Validation: {json.dumps(request.latest_validation or {})}"
-        result = await asyncio.wait_for(agent.run(prompt), timeout=80.0)
+        result = await asyncio.wait_for(agent.run(prompt), timeout=180.0)
 
         # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
         decision = getattr(result, "output", getattr(result, "data", None))
