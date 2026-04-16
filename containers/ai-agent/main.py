@@ -327,12 +327,13 @@ async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key))
     """Standard agent endpoint for manual queries."""
     logger.info(f"RUNNING AGENT: prompt='{request.prompt[:100]}...'")
     try:
-        run_kwargs = {}
         if request.system_prompt:
             logger.info("Using orchestrator-provided system prompt")
-            run_kwargs["system_prompt"] = request.system_prompt
+            effective_prompt = f"<system_prompt>{request.system_prompt}</system_prompt>\n\n{request.prompt}"
+        else:
+            effective_prompt = request.prompt
 
-        result = await agent.run(request.prompt, **run_kwargs)
+        result = await agent.run(effective_prompt)
 
         # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
         output = getattr(result, "output", getattr(result, "data", None))
