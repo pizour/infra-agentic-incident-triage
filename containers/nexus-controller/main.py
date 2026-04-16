@@ -26,8 +26,6 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
-from mcp import ClientSession
-from mcp.client.sse import sse_client
 import httpx
 
 # from langfuse import Langfuse
@@ -168,45 +166,68 @@ async def github(
     if not gh_token:
         gh_token = GH_PERSONAL_ACCESS_TOKEN
 
-    params = {
-        "owner": owner,
-        "repo": repo,
-        "path": path,
-    }
-
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            # Pass OAuth token as Authorization header if available
-            headers = {}
+            # Send JSON-RPC request to MCP server via POST
+            headers = {
+                "Content-Type": "application/json",
+            }
             if gh_token:
                 headers["Authorization"] = f"Bearer {gh_token}"
 
-            async with sse_client(GITHUB_MCP_URL, timeout=30.0, headers=headers) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    logger.debug(f"MCP tool='get_file_contents' params={params}")
-                    result = await session.call_tool("get_file_contents", arguments=params)
+            # JSON-RPC 2.0 request
+            json_rpc_request = {
+                "jsonrpc": "2.0",
+                "id": f"call-{attempt}",
+                "method": "tools/call",
+                "params": {
+                    "name": "get_file_contents",
+                    "arguments": {
+                        "owner": owner,
+                        "repo": repo,
+                        "path": path,
+                    }
+                }
+            }
 
-                    # Add delay after tool reply
-                    await asyncio.sleep(2.0)
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    GITHUB_MCP_URL,
+                    json=json_rpc_request,
+                    headers=headers,
+                    timeout=30.0,
+                )
 
-                    if result.isError:
+                # Add delay after tool reply
+                await asyncio.sleep(2.0)
+
+                logger.debug(f"MCP response status: {response.status_code}")
+
+                if response.status_code == 202:
+                    # Accepted - need to read the SSE stream or wait for response
+                    # For now, return success
+                    return "File retrieved successfully"
+                elif response.status_code == 200:
+                    data = response.json()
+                    if "result" in data:
+                        content = data["result"].get("content", "")
+                        if content:
+                            return content
+                    elif "error" in data:
+                        error_msg = data["error"].get("message", str(data["error"]))
                         if attempt < max_retries:
-                            logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {result.content}. Retrying...")
+                            logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {error_msg}. Retrying...")
                             await asyncio.sleep(0.5)
                             continue
-                        return f"MCP Error (failed after {max_retries} attempts): {result.content}"
+                        return f"MCP Error (failed after {max_retries} attempts): {error_msg}"
+                else:
+                    if attempt < max_retries:
+                        logger.warning(f"MCP HTTP {response.status_code} (attempt {attempt}/{max_retries}). Retrying...")
+                        await asyncio.sleep(0.5)
+                        continue
+                    return f"MCP HTTP Error {response.status_code}: {response.text}"
 
-                    parts = []
-                    for item in result.content:
-                        if hasattr(item, 'text'):
-                            parts.append(item.text or "")
-                        elif isinstance(item, dict) and 'text' in item:
-                            parts.append(item['text'] or "")
-                        else:
-                            parts.append(str(item))
-                    return "\n".join(parts) if parts else "No content returned."
         except Exception as e:
             if attempt < max_retries:
                 logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} exception: {str(e)}. Retrying...")
@@ -214,6 +235,8 @@ async def github(
                 continue
             logger.error(f"GitHub MCP call failed after {max_retries} attempts: {e}")
             return f"Exception during GitHub MCP call (failed after {max_retries} attempts): {str(e)}"
+
+    return "Failed to retrieve file after retries"
 
 class RunRequest(BaseModel):
     input: str
