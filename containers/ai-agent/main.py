@@ -206,25 +206,52 @@ async def github(
                         # Add delay after tool reply
                         await asyncio.sleep(2.0)
 
-                        logger.debug(f"MCP response status: {response.status_code}")
+                        logger.debug(f"MCP response status: {response.status_code}, content length: {len(response.text)}")
+                        logger.debug(f"MCP response body: {response.text[:200]}")
 
                         if response.status_code == 202:
-                            # Accepted - need to read response from stream
-                            return "File retrieved successfully"
+                            # Accepted - request was received
+                            logger.debug("MCP request accepted (202)")
+                            if attempt < max_retries:
+                                logger.info(f"Waiting for async response (attempt {attempt}/{max_retries})...")
+                                await asyncio.sleep(1.0)
+                                continue
+                            return "MCP request accepted but no response received"
+
                         elif response.status_code == 200:
-                            data = response.json()
-                            if "result" in data:
-                                content = data["result"].get("content", "")
-                                if content:
-                                    span.set_attribute("content_length", len(content))
-                                    return content
-                            elif "error" in data:
-                                error_msg = data["error"].get("message", str(data["error"]))
+                            if not response.text:
                                 if attempt < max_retries:
-                                    logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {error_msg}. Retrying...")
+                                    logger.warning(f"Empty response (attempt {attempt}/{max_retries}). Retrying...")
                                     await asyncio.sleep(0.5)
                                     continue
-                                return f"MCP Error (failed after {max_retries} attempts): {error_msg}"
+                                return "Empty response from MCP server"
+
+                            try:
+                                data = response.json()
+                                if "result" in data:
+                                    content = data["result"].get("content", "")
+                                    if content:
+                                        span.set_attribute("content_length", len(content))
+                                        return content
+                                elif "error" in data:
+                                    error_msg = data["error"].get("message", str(data["error"]))
+                                    if attempt < max_retries:
+                                        logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {error_msg}. Retrying...")
+                                        await asyncio.sleep(0.5)
+                                        continue
+                                    return f"MCP Error (failed after {max_retries} attempts): {error_msg}"
+                                else:
+                                    logger.debug(f"Unexpected response format: {data}")
+                                    if attempt < max_retries:
+                                        await asyncio.sleep(0.5)
+                                        continue
+                                    return f"Unexpected MCP response format: {data}"
+                            except Exception as json_err:
+                                logger.warning(f"Failed to parse response JSON: {json_err}, response: {response.text[:100]}")
+                                if attempt < max_retries:
+                                    await asyncio.sleep(0.5)
+                                    continue
+                                return f"Invalid JSON response from MCP: {str(json_err)}"
                         else:
                             if attempt < max_retries:
                                 logger.warning(f"MCP HTTP {response.status_code} (attempt {attempt}/{max_retries}). Retrying...")
