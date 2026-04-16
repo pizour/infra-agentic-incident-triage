@@ -168,6 +168,8 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
         "GITHUB_MCP_URL": os.getenv("GITHUB_MCP_URL", "http://github-mcp-server:8080/mcp"),
         "GITHUB_REPO": os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage"),
         "NAMESPACE": NAMESPACE,
+        "GOOGLE_CLOUD_PROJECT": os.getenv("GOOGLE_CLOUD_PROJECT", ""),
+        "GOOGLE_CLOUD_LOCATION": os.getenv("GOOGLE_CLOUD_LOCATION", "europe-west4"),
     }
     # Override/extend with caller-provided env vars
     static_env.update(env_vars)
@@ -191,11 +193,17 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
             )
         ))
 
+    # Service account with Workload Identity for GCP auth — must match the ai-agent Helm release SA
+    # Run: kubectl get sa -n ai-agent  to find the correct name, then set AGENT_SERVICE_ACCOUNT
+    agent_sa = os.getenv("AGENT_SERVICE_ACCOUNT")
+    pod_spec_kwargs = {"service_account_name": agent_sa} if agent_sa else {}
+
     pod = client.V1Pod(
         api_version="v1",
         kind="Pod",
         metadata=client.V1ObjectMeta(name=pod_name, labels={"app": "ai-agent", "agent-type": agent_id}),
         spec=client.V1PodSpec(
+            **pod_spec_kwargs,
             containers=[
                 client.V1Container(
                     name="agent",
