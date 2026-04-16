@@ -86,7 +86,7 @@ async def get_github_oauth_token() -> Optional[str]:
         # Create JWT from App private key
         now = int(time.time())
         payload = {
-            "iss": int(GH_OAUTH_APP_ID),
+            "iss": GH_OAUTH_APP_ID,
             "iat": now,
             "exp": now + 600,  # 10 minutes
         }
