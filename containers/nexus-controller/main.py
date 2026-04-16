@@ -94,6 +94,8 @@ class NexusRoutingDecision(BaseModel):
 ROUTER_SYSTEM_PROMPT = (
     "You are the Nexus Controller. Your task is to evaluate the provided validation state and make a routing decision.\n"
     "CRITICAL: You MUST use your 'github' tool to read 'agents/control-plane/nexus-controller.md' and follow the operating procedures defined there to the detail.\n"
+    "IMPORTANT: If the github tool fails with 'failed after 3 attempts', you MUST return action='finish' to gracefully end the workflow. Do NOT retry or get stuck.\n"
+    "Return NexusRoutingDecision with: action='finish', feedback='Tool failures prevent routing decision', target_agent=None\n"
 )
 
 agent = Agent(
@@ -132,13 +134,9 @@ async def github(
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            # Prepare headers with GitHub token for authentication
-            headers = {}
-            if GH_PERSONAL_ACCESS_TOKEN:
-                headers["Authorization"] = f"Bearer {GH_PERSONAL_ACCESS_TOKEN}"
-                logger.debug("Using GitHub token for MCP authentication")
-
-            async with sse_client(GITHUB_MCP_URL, headers=headers, timeout=30.0) as (read, write):
+            # Local GitHub MCP server doesn't require authentication headers
+            # It uses GITHUB_PERSONAL_ACCESS_TOKEN internally to authenticate with GitHub
+            async with sse_client(GITHUB_MCP_URL, timeout=30.0) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     logger.debug(f"MCP tool='get_file_contents' params={params}")

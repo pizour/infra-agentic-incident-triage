@@ -1,6 +1,7 @@
 import os
 import httpx
 import base64
+import asyncio
 from typing import Optional, List
 from dotenv import load_dotenv
 from mcp import ClientSession
@@ -78,7 +79,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Shared config ---
-GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "https://api.githubcopilot.com/mcp")
+GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "http://github-mcp-server:8080/sse")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 MCP_API_KEY = os.getenv("MCP_API_KEY", "")
@@ -131,12 +132,9 @@ async def github(
             max_retries = 3
             for attempt in range(1, max_retries + 1):
                 try:
-                    # Prepare headers with GitHub token for authentication
-                    headers = {}
-                    if GH_PERSONAL_ACCESS_TOKEN:
-                        headers["Authorization"] = f"Bearer {GH_PERSONAL_ACCESS_TOKEN}"
-
-                    async with sse_client(GITHUB_MCP_URL, headers=headers, timeout=30.0) as (read, write):
+                    # Local GitHub MCP server doesn't require authentication headers
+                    # It uses GITHUB_PERSONAL_ACCESS_TOKEN internally to authenticate with GitHub
+                    async with sse_client(GITHUB_MCP_URL, timeout=30.0) as (read, write):
                         async with ClientSession(read, write) as session:
                             await session.initialize()
                             logger.debug(f"MCP tool='get_file_contents' path={file_path}")
@@ -149,6 +147,7 @@ async def github(
                             if result.isError:
                                 if attempt < max_retries:
                                     logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {result.content}. Retrying...")
+                                    await asyncio.sleep(0.5)
                                     continue
                                 return f"MCP Error (failed after {max_retries} attempts): {result.content}"
 
@@ -166,6 +165,7 @@ async def github(
                 except Exception as e:
                     if attempt < max_retries:
                         logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} exception: {str(e)}. Retrying...")
+                        await asyncio.sleep(0.5)
                         continue
                     else:
                         logger.error(f"GitHub MCP call failed after {max_retries} attempts: {e}")

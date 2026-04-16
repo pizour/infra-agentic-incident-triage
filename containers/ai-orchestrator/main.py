@@ -251,6 +251,25 @@ async def node_nexus_controller(state: CompleteState) -> dict:
                 span.record_exception(e)
                 return {"next_action": "finish"}
 
+    # Post-response validation: if controller returned an error or tool failure pattern, finish
+    try:
+        if isinstance(data, dict):
+            action = data.get("action", "").lower()
+            feedback = data.get("feedback", "").lower()
+
+            # Detect tool failure patterns - finish instead of continuing
+            if "failed after 3 attempts" in feedback or "tool" in feedback and "fail" in feedback:
+                logger.warning(f"Detected tool failure in feedback: {feedback}. Finishing workflow.")
+                return {"next_action": "finish"}
+
+            # If action is anything other than recognized actions, finish
+            if action not in ["next_agent", "retry", "finish"]:
+                logger.warning(f"Unknown action from controller: {action}. Finishing workflow.")
+                return {"next_action": "finish"}
+    except Exception as e:
+        logger.error(f"Error validating controller response: {e}")
+        return {"next_action": "finish"}
+
 # ── Node: Executor ────────────────────────────────────────────────────────────
 async def node_executor(state: CompleteState) -> dict:
     """Dumb executor: spawn the agent pod nexus-controller asked for, store raw result."""
