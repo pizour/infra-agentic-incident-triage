@@ -160,6 +160,13 @@ async def github(
     if not path:
         return "Error: 'path' required"
 
+    # Normalize path - remove directory prefixes and ensure repo-root relative
+    path = path.lstrip('/')
+    # Remove common directory prefixes that might be added by agents
+    for prefix in ["agents/control-plane/", "agents/interaction/", "agents/specialist/"]:
+        if path.startswith(prefix):
+            path = path[len(prefix):]
+
     owner, repo = GITHUB_REPO.split('/')
 
     # Try to get OAuth token first, fallback to PAT
