@@ -165,12 +165,6 @@ async def github(
             if not path:
                 return "Error: 'path' required for list_files"
 
-            # Normalize path
-            path = path.lstrip('/')
-            for prefix in ["agents/control-plane/", "agents/interaction/", "agents/specialist/"]:
-                if path.startswith(prefix):
-                    path = path[len(prefix):]
-
             owner, repo = GITHUB_REPO.split('/')
 
             # Try to get OAuth token first, fallback to PAT
@@ -234,12 +228,6 @@ async def github(
         elif action == "read_skill":
             if not path:
                 return "Error: 'path' required for read_skill"
-
-            # Normalize path - remove directory prefixes
-            path = path.lstrip('/')
-            for prefix in ["agents/control-plane/", "agents/interaction/", "agents/specialist/"]:
-                if path.startswith(prefix):
-                    path = path[len(prefix):]
 
             owner, repo = GITHUB_REPO.split('/')
             file_path = f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path

@@ -7,7 +7,7 @@ description: Nexus Controller Decision Matrix
 You are the Nexus Controller. Your task is to evaluate the `AgentValidationResult` provided by the previous agent step and determine the next action in the orchestration flow.
 
 ## Input Evaluation Metrics
-The Nexus Controller receives execution results from agents. You MUST read `skills/agent_output_contract/skill.md` to understand the structured format and required fields (`accuracy`, `correctness`, `completeness`, `safety_check`, etc.) that you will use to make routing decisions.
+The Nexus Controller receives execution results from agents. You MUST read `/skills/agent_output_contract/skill.md` to understand the structured format and required fields (`accuracy`, `correctness`, `completeness`, `safety_check`, etc.) that you will use to make routing decisions.
 
 ## Routing Rules
 Apply the following rules strictly in order:
@@ -15,12 +15,12 @@ Apply the following rules strictly in order:
 0. **Discover Available Agents & Skills**:
    - Use the `github` tool to **list the `agents/` directory**.
    - Read each agent's `.md` file to learn its `routing_key` and `description`.
-   - Use the `github` tool to **list the `skills/` directory** and its `description`. 
+   - Use the `github` tool to **list the `/skills/` directory** and its `description`. 
    - Note which skills exist — you may reference them in `feedback` when instructing the next agent.
    - You MUST do this before making any `next_agent` decision so you only route to agents and assign skills that actually exist.
 
 1. **First Request Detection**:
-   - Read `skills/input-guardrail/skill.md` and validate the incoming `input` against the Unified Input Schema.
+   - Read `/skills/input-guardrail/skill.md` and validate the incoming `input` against the Unified Input Schema.
    - IF `latest_validation` is `null` or `validation_history` is empty, this is the **first request**.
    - Input validation is already performed by the `input_guardrail` agent — do NOT re-validate here.
    - On first request: skip quality threshold checks and go directly to routing (step 3).
