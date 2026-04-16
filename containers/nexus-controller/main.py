@@ -150,11 +150,12 @@ async def github(
     Interact with the GitHub repository via hosted MCP endpoint.
     Actions:
       - read_file / get_file_contents: Read content of a file
+      - list_files / list_directory: List files in a directory
     """
     logger.info(f"GITHUB MCP CALL: action={action}, path={path}")
 
-    if action not in ["read_file", "get_file_contents"]:
-        return f"Unsupported action: {action}. Use 'read_file' or 'get_file_contents'"
+    if action not in ["read_file", "get_file_contents", "list_files", "list_directory"]:
+        return f"Unsupported action: {action}. Use 'read_file', 'get_file_contents', 'list_files', or 'list_directory'"
 
     if not path:
         return "Error: 'path' required"
@@ -166,6 +167,11 @@ async def github(
     if not gh_token:
         gh_token = GH_PERSONAL_ACCESS_TOKEN
 
+    # Determine MCP tool name
+    mcp_tool_name = "get_file_contents"
+    if action in ["list_files", "list_directory"]:
+        mcp_tool_name = "list_directory"
+
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
@@ -176,18 +182,21 @@ async def github(
             if gh_token:
                 headers["Authorization"] = f"Bearer {gh_token}"
 
+            # Build arguments based on action
+            arguments = {
+                "owner": owner,
+                "repo": repo,
+                "path": path,
+            }
+
             # JSON-RPC 2.0 request
             json_rpc_request = {
                 "jsonrpc": "2.0",
                 "id": f"call-{attempt}",
                 "method": "tools/call",
                 "params": {
-                    "name": "get_file_contents",
-                    "arguments": {
-                        "owner": owner,
-                        "repo": repo,
-                        "path": path,
-                    }
+                    "name": mcp_tool_name,
+                    "arguments": arguments,
                 }
             }
 
@@ -241,7 +250,37 @@ async def github(
                             return "No data in SSE response"
 
                         if "result" in json_data:
-                            content_list = json_data["result"].get("content", [])
+                            result = json_data["result"]
+
+                            # Handle list_directory responses
+                            if action in ["list_files", "list_directory"]:
+                                # For directory listings, format the output
+                                if isinstance(result, list):
+                                    items = []
+                                    for item in result:
+                                        if isinstance(item, dict):
+                                            # Typical directory entry
+                                            name = item.get("name", item.get("path", ""))
+                                            file_type = item.get("type", "file")
+                                            items.append(f"- {name} ({file_type})")
+                                        else:
+                                            items.append(f"- {str(item)}")
+                                    return "Files in directory:\n" + "\n".join(items)
+                                elif isinstance(result, dict) and "content" in result:
+                                    # Handle if wrapped in content
+                                    items = []
+                                    for item in result.get("content", []):
+                                        if isinstance(item, dict):
+                                            name = item.get("name", item.get("path", ""))
+                                            items.append(f"- {name}")
+                                        else:
+                                            items.append(f"- {str(item)}")
+                                    return "Files in directory:\n" + "\n".join(items)
+                                else:
+                                    return f"Directory listing: {str(result)}"
+
+                            # Handle file content responses
+                            content_list = result.get("content", []) if isinstance(result, dict) else result
 
                             # Extract actual file content
                             text_parts = []

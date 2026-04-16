@@ -154,12 +154,78 @@ async def github(
     Read files from the GitHub repository.
     Actions:
       - read_skill: Read a skill/SOP or any file from GitHub (requires 'path')
+      - list_files/list_directory: List files in a directory
     """
     logger.info(f"GITHUB TOOL CALL: action={action}, path={path}")
     with tracer.start_as_current_span(f"github.{action}") as span:
         span.set_attribute("action", action)
 
-        if action == "read_skill":
+        # Handle list_files action
+        if action in ["list_files", "list_directory"]:
+            if not path:
+                return "Error: 'path' required for list_files"
+
+            owner, repo = GITHUB_REPO.split('/')
+
+            # Try to get OAuth token first, fallback to PAT
+            gh_token = await get_github_oauth_token()
+            if not gh_token:
+                gh_token = GH_PERSONAL_ACCESS_TOKEN
+
+            max_retries = 3
+            for attempt in range(1, max_retries + 1):
+                try:
+                    headers = {"Content-Type": "application/json"}
+                    if gh_token:
+                        headers["Authorization"] = f"Bearer {gh_token}"
+
+                    json_rpc_request = {
+                        "jsonrpc": "2.0",
+                        "id": f"call-{attempt}",
+                        "method": "tools/call",
+                        "params": {
+                            "name": "list_directory",
+                            "arguments": {
+                                "owner": owner,
+                                "repo": repo,
+                                "path": path,
+                            }
+                        }
+                    }
+
+                    async with httpx.AsyncClient() as client:
+                        response = await client.post(GITHUB_MCP_URL, json=json_rpc_request, headers=headers, timeout=30.0)
+                        await asyncio.sleep(2.0)
+
+                        if response.status_code == 200:
+                            lines = response.text.strip().split('\n')
+                            for line in lines:
+                                if line.startswith('data: '):
+                                    json_str = line[6:]
+                                    json_data = json.loads(json_str)
+
+                                    if "result" in json_data:
+                                        result = json_data["result"]
+                                        # Format directory listing
+                                        if isinstance(result, list):
+                                            items = [f"- {item.get('name', str(item)) if isinstance(item, dict) else item}" for item in result]
+                                            return "Files in directory:\n" + "\n".join(items)
+                                        elif isinstance(result, dict) and "content" in result:
+                                            items = [f"- {item.get('name', str(item))}" for item in result.get("content", [])]
+                                            return "Files in directory:\n" + "\n".join(items)
+                                        else:
+                                            return f"Directory listing: {str(result)}"
+                                    break
+                except Exception as e:
+                    if attempt < max_retries:
+                        logger.warning(f"List attempt {attempt}/{max_retries} failed: {e}")
+                        await asyncio.sleep(0.5)
+                        continue
+                    return f"Failed to list directory: {str(e)}"
+
+            return "Failed to list directory after retries"
+
+        elif action == "read_skill":
             if not path:
                 return "Error: 'path' required for read_skill"
 

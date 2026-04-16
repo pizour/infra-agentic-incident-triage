@@ -15,7 +15,7 @@ Apply the following rules strictly in order:
 0. **Discover Available Agents & Skills**:
    - Use the `github` tool to **list the `agents/` directory**.
    - Read each agent's `.md` file to learn its `routing_key` and `description`.
-   - Use the `github` tool to **list the `skills/` directory**.
+   - Use the `github` tool to **list the `skills/` directory** and its `description`. 
    - Note which skills exist — you may reference them in `feedback` when instructing the next agent.
    - You MUST do this before making any `next_agent` decision so you only route to agents and assign skills that actually exist.
 
