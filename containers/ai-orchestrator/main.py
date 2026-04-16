@@ -190,15 +190,11 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
             )
         ))
 
-    # Use the same service account as the orchestrator pod itself (carries GKE Workload Identity)
-    agent_service_account = os.getenv("AGENT_SERVICE_ACCOUNT")
-
     pod = client.V1Pod(
         api_version="v1",
         kind="Pod",
         metadata=client.V1ObjectMeta(name=pod_name, labels={"app": "ai-agent", "agent-type": agent_id}),
         spec=client.V1PodSpec(
-            **( {"service_account_name": agent_service_account} if agent_service_account else {}),
             containers=[
                 client.V1Container(
                     name="agent",
