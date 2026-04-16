@@ -242,22 +242,36 @@ async def github(
 
                         if "result" in json_data:
                             content_list = json_data["result"].get("content", [])
-                            # Extract text from content array
+                            logger.debug(f"Full content list: {json.dumps(content_list)[:500]}")
+
+                            # Extract actual file content
                             text_parts = []
                             for item in content_list:
-                                if isinstance(item, dict) and item.get("type") == "text":
-                                    text = item.get("text", "")
-                                    if text:
-                                        text_parts.append(text)
-                                elif isinstance(item, dict) and item.get("type") == "resource":
-                                    # Handle resource type
-                                    resource_uri = item.get("uri", "")
-                                    text_parts.append(f"[Resource: {resource_uri}]")
+                                if isinstance(item, dict):
+                                    item_type = item.get("type")
+                                    logger.debug(f"Item type: {item_type}, keys: {list(item.keys())}")
+
+                                    if item_type == "text":
+                                        text = item.get("text", "")
+                                        # Skip metadata messages, include actual content
+                                        if text and len(text) > 100:  # Real content is usually longer
+                                            text_parts.append(text)
+                                    elif item_type == "resource":
+                                        # Resources might have embedded content
+                                        if "text" in item:
+                                            text_parts.append(item.get("text", ""))
+                                        # Check for other content keys
+                                        for key in ["content", "resource_content", "data"]:
+                                            if key in item:
+                                                text_parts.append(str(item[key]))
 
                             if text_parts:
-                                return "\n".join(text_parts)
+                                content = "\n".join(text_parts)
+                                logger.info(f"Extracted content ({len(content)} bytes): {content[:100]}...")
+                                return content
                             else:
-                                return "No text content in result"
+                                logger.error(f"No content extracted. Full response: {json_data}")
+                                return "No file content in result"
 
                         elif "error" in json_data:
                             error_msg = json_data["error"].get("message", str(json_data["error"]))
