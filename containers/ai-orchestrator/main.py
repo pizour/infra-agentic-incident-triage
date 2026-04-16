@@ -26,13 +26,16 @@ def setup_logging():
 load_dotenv()
 
 # ── OpenTelemetry ─────────────────────────────────────────────────────────────
-from opentelemetry import trace
+from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from prometheus_fastapi_instrumentator import Instrumentator
 from openinference.instrumentation.langchain import LangChainInstrumentor
 # from langfuse.opentelemetry import LangfuseExporter
@@ -41,6 +44,9 @@ resource = Resource.create({SERVICE_NAME: "ai-orchestrator"})
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
+
+# W3C TraceContext propagator — enables traceparent header injection into outgoing httpx calls
+propagate.set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()]))
 
 # Arize Phoenix OTLP Export
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
