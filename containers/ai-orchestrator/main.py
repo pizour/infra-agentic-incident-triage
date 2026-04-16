@@ -145,6 +145,7 @@ class CompleteState(TypedDict):
     next_action: str
     next_agent: Optional[str]
     next_instructions: str
+    retry_count: int  # Track retries; max 3 attempts per agent
 
 
 # ── Kubernetes Pod Lifecycle Helper ───────────────────────────────────────────
@@ -253,9 +254,25 @@ async def node_executor(state: CompleteState) -> dict:
         logger.error("No target_agent provided by Controller!")
         return {"next_action": "finish"}
 
-    logger.info(f"NODE: executor - forwarding to agent={agent_id}")
+    # Track retry attempts for this agent
+    current_retry = state.get("retry_count", 0)
+    last_agent = state.get("validation_history", [])[-1].get("agent_key") if state.get("validation_history") else None
+
+    # Reset counter if this is a new agent request (not a retry)
+    if agent_id != last_agent:
+        current_retry = 0
+
+    current_retry += 1
+
+    # Check max retries (3 attempts per agent)
+    if current_retry > 3:
+        logger.warning(f"AGENT {agent_id} exceeded max retries (3). Finishing.")
+        return {"next_action": "finish", "retry_count": current_retry}
+
+    logger.info(f"NODE: executor - forwarding to agent={agent_id} (attempt {current_retry}/3)")
     with tracer.start_as_current_span(f"ai-orchestrator.node.execute.{agent_id}") as span:
         span.set_attribute("agent_id", str(agent_id))
+        span.set_attribute("attempt", current_retry)
         prompt = str(state.get("next_instructions") or state["input"])
 
         try:
@@ -269,12 +286,13 @@ async def node_executor(state: CompleteState) -> dict:
         history = list(state.get("validation_history") or [])
         results = dict(state.get("results") or {})  # type: ignore[arg-type]
         results[str(agent_id)] = result_str
-        history.append({"agent_key": str(agent_id), "raw": result_str})
+        history.append({"agent_key": str(agent_id), "raw": result_str, "attempt": current_retry})
 
         return {
             "results": results,
-            "latest_validation": {"agent_key": str(agent_id), "raw": result_str},
+            "latest_validation": {"agent_key": str(agent_id), "raw": result_str, "attempt": current_retry},
             "validation_history": history,
+            "retry_count": current_retry,
         }
 
 # ── Routing ───────────────────────────────────────────────────────────────────
@@ -329,7 +347,8 @@ async def run_task(request: TaskRequest):
         "latest_validation": None,
         "next_action": "",
         "next_agent": None,
-        "next_instructions": ""
+        "next_instructions": "",
+        "retry_count": 0
     }
     
     with tracer.start_as_current_span("ai-orchestrator.task.execution") as span:
@@ -368,6 +387,7 @@ async def handle_alert(request: Request, payload: dict):
         "next_action": "",
         "next_agent": None,
         "next_instructions": "",
+        "retry_count": 0
     }
 
     with tracer.start_as_current_span("ai-orchestrator.alert.orchestration") as span:

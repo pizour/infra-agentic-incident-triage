@@ -2,6 +2,7 @@ import os
 import json
 import httpx
 import base64
+import asyncio
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -25,6 +26,7 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+import httpx
 
 # from langfuse import Langfuse
 # from langfuse.opentelemetry import LangfuseExporter
@@ -66,6 +68,7 @@ GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "http://github-mcp-server.ai-agent.
 GITHUB_REPO = os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 MCP_API_KEY = os.getenv("MCP_API_KEY", "")
+GH_PERSONAL_ACCESS_TOKEN = os.getenv("GH_PERSONAL_ACCESS_TOKEN", "")
 
 app = FastAPI(title="Nexus-Controller (Pydantic-AI)")
 FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
@@ -107,46 +110,44 @@ async def github(
     path: Optional[str] = None,
 ) -> str:
     """
-    Interact with the GitHub repository via MCP protocol (SSE).
+    Interact with the GitHub repository via hosted MCP endpoint.
     Actions:
-      - list_files / list_directory_contents: List files in a directory
       - read_file / get_file_contents: Read content of a file
     """
     logger.info(f"GITHUB MCP CALL: action={action}, path={path}")
 
+    if action not in ["read_file", "get_file_contents"]:
+        return f"Unsupported action: {action}. Use 'read_file' or 'get_file_contents'"
+
+    if not path:
+        return "Error: 'path' required"
+
+    owner, repo = GITHUB_REPO.split('/')
     params = {
-        "owner": GITHUB_REPO.split('/')[0],
-        "repo": GITHUB_REPO.split('/')[1],
-        "path": path or "."
+        "owner": owner,
+        "repo": repo,
+        "path": path,
     }
 
-    # Map caller actions to official GitHub MCP server tool names
-    tool_map = {
-        "list_files": "list_directory_contents",
-        "read_file": "get_file_contents",
-        "list_directory_contents": "list_directory_contents",
-        "get_file_contents": "get_file_contents",
-    }
-    target_tool = tool_map.get(action, action)
-
-    # Retry logic - max 3 attempts
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            # Prepare headers with MCP API key if available
+            # Prepare headers with GitHub token for authentication
             headers = {}
-            if MCP_API_KEY:
-                headers["X-MCP-API-Key"] = MCP_API_KEY
+            if GH_PERSONAL_ACCESS_TOKEN:
+                headers["Authorization"] = f"Bearer {GH_PERSONAL_ACCESS_TOKEN}"
+                logger.debug("Using GitHub token for MCP authentication")
 
-            async with sse_client(GITHUB_MCP_URL, headers=headers) as (read, write):
+            async with sse_client(GITHUB_MCP_URL, headers=headers, timeout=30.0) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    logger.debug(f"MCP tool='{target_tool}' params={params}")
-                    result = await session.call_tool(target_tool, arguments=params)
+                    logger.debug(f"MCP tool='get_file_contents' params={params}")
+                    result = await session.call_tool("get_file_contents", arguments=params)
 
                     if result.isError:
                         if attempt < max_retries:
                             logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {result.content}. Retrying...")
+                            await asyncio.sleep(0.5)
                             continue
                         return f"MCP Error (failed after {max_retries} attempts): {result.content}"
 
@@ -161,7 +162,8 @@ async def github(
                     return "\n".join(parts) if parts else "No content returned."
         except Exception as e:
             if attempt < max_retries:
-                logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} failed: {str(e)}. Retrying...")
+                logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} exception: {str(e)}. Retrying...")
+                await asyncio.sleep(0.5)
                 continue
             logger.error(f"GitHub MCP call failed after {max_retries} attempts: {e}")
             return f"Exception during GitHub MCP call (failed after {max_retries} attempts): {str(e)}"

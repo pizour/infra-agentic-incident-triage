@@ -23,7 +23,7 @@ resources:
 env:
   SKILLS_DIR: "/app/skills"
   MODEL_NAME: "gemini-2.5-flash"
-  GITHUB_MCP_URL: "http://github-mcp-server.ai-agent.svc.cluster.local:8080/sse"
+  GITHUB_MCP_URL: "https://api.githubcopilot.com/mcp/"
   GOOGLE_CLOUD_PROJECT: "ai-incident-triage"
   GOOGLE_CLOUD_REGION: "europe-west4"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
@@ -41,8 +41,9 @@ persistence:
   existingClaim: "skills-pvc"
   mountPath: "/app/skills"
  
-# Secrets injected as env vars from K8s Secret ai-agent-secrets
+# Secrets injected as env vars from K8s Secrets
 secrets:
   LANGFUSE_PUBLIC_KEY: ""
   LANGFUSE_SECRET_KEY: ""
   MCP_API_KEY: ""
+  GH_PERSONAL_ACCESS_TOKEN: ""

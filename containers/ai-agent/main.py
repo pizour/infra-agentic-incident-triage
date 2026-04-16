@@ -3,6 +3,8 @@ import httpx
 import base64
 from typing import Optional, List
 from dotenv import load_dotenv
+from mcp import ClientSession
+from mcp.client.sse import sse_client
 
 load_dotenv()
 
@@ -76,10 +78,11 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Shared config ---
-GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "http://github-mcp-server:8080/sse")
+GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "https://api.githubcopilot.com/mcp/")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 MCP_API_KEY = os.getenv("MCP_API_KEY", "")
+GH_PERSONAL_ACCESS_TOKEN = os.getenv("GH_PERSONAL_ACCESS_TOKEN", "")
 
 from pydantic_ai.models.google import GoogleModel
 model_name = os.getenv("LLM_MODEL", "gemini-2.5-flash")
@@ -119,41 +122,54 @@ async def github(
         span.set_attribute("action", action)
 
         if action == "read_skill":
-            if not path: return "Error: 'path' required for read_skill"
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                headers = {}
-                if MCP_API_KEY:
-                    headers["X-MCP-API-Key"] = MCP_API_KEY
+            if not path:
+                return "Error: 'path' required for read_skill"
 
-                max_retries = 3
-                for attempt in range(1, max_retries + 1):
-                    try:
-                        payload = {
-                            "owner": GITHUB_REPO.split('/')[0],
-                            "repo": GITHUB_REPO.split('/')[1],
-                            "path": f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path,
-                            "branch": GITHUB_BRANCH
-                        }
-                        # Prefer Service name over FQDN if possible, but keep fallback
-                        base_url = GITHUB_MCP_URL.split("/sse")[0]
-                        api_endpoint = f"{base_url}/read_file"
+            owner, repo = GITHUB_REPO.split('/')
+            file_path = f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path
 
-                        resp = await client.post(api_endpoint, json=payload, headers=headers)
-                        if resp.status_code == 200:
-                            content = resp.json().get("content", "Empty file.")
+            max_retries = 3
+            for attempt in range(1, max_retries + 1):
+                try:
+                    # Prepare headers with GitHub token for authentication
+                    headers = {}
+                    if GH_PERSONAL_ACCESS_TOKEN:
+                        headers["Authorization"] = f"Bearer {GH_PERSONAL_ACCESS_TOKEN}"
+
+                    async with sse_client(GITHUB_MCP_URL, headers=headers, timeout=30.0) as (read, write):
+                        async with ClientSession(read, write) as session:
+                            await session.initialize()
+                            logger.debug(f"MCP tool='get_file_contents' path={file_path}")
+                            result = await session.call_tool("get_file_contents", arguments={
+                                "owner": owner,
+                                "repo": repo,
+                                "path": file_path,
+                            })
+
+                            if result.isError:
+                                if attempt < max_retries:
+                                    logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {result.content}. Retrying...")
+                                    continue
+                                return f"MCP Error (failed after {max_retries} attempts): {result.content}"
+
+                            parts = []
+                            for item in result.content:
+                                if hasattr(item, 'text'):
+                                    parts.append(item.text or "")
+                                elif isinstance(item, dict) and 'text' in item:
+                                    parts.append(item['text'] or "")
+                                else:
+                                    parts.append(str(item))
+                            content = "\n".join(parts) if parts else "No content returned."
                             span.set_attribute("content_length", len(content))
                             return content
-                        elif attempt < max_retries:
-                            logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} failed: {resp.status_code}. Retrying...")
-                            continue
-                        else:
-                            return f"Error reading GitHub skill (failed after {max_retries} attempts): {resp.status_code} - {resp.text}"
-                    except Exception as e:
-                        if attempt < max_retries:
-                            logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} exception: {str(e)}. Retrying...")
-                            continue
-                        else:
-                            return f"Exception connecting to GitHub MCP (failed after {max_retries} attempts): {str(e)}"
+                except Exception as e:
+                    if attempt < max_retries:
+                        logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} exception: {str(e)}. Retrying...")
+                        continue
+                    else:
+                        logger.error(f"GitHub MCP call failed after {max_retries} attempts: {e}")
+                        return f"Exception during GitHub MCP call (failed after {max_retries} attempts): {str(e)}"
 
         return f"Unknown action: {action}"
 
