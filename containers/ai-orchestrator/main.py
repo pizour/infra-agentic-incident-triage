@@ -220,7 +220,6 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
             curr_pod = core_v1.read_namespaced_pod_status(name=pod_name, namespace=NAMESPACE)
             if curr_pod.status.pod_ip and any(c.ready for c in (curr_pod.status.container_statuses or [])):
                 pod_ip = curr_pod.status.pod_ip
-                logger.info(f"POD READY: {pod_name} at IP {pod_ip}")
                 break
             if i % 5 == 0:
                 logger.debug(f"Waiting for pod {pod_name}...")
@@ -228,7 +227,11 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
             
         if not pod_ip:
             raise Exception(f"Pod {pod_name} failed to become ready.")
-            
+
+        # Wait for app to fully initialize (Langfuse, model setup) after readiness probe passes
+        logger.info(f"POD READY: {pod_name} — waiting 30s for app initialization...")
+        await asyncio.sleep(30)
+
         agent_url = f"http://{pod_ip}:{port}/agent"
         logger.info(f"CALLING AGENT: {agent_id} at {agent_url}")
         agent_api_key = os.getenv("APP_API_KEY", "")
