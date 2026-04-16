@@ -153,7 +153,9 @@ async def github(
       - tool='get_file_contents', path='/skills/nexus_routing/skill.md'
       - tool='get_file_contents', path='agents/'  (works for directories too)
     """
-    logger.info(f"GITHUB TOOL CALL: tool={tool}, path={path}")
+    # Normalize: the only valid GitHub MCP tool for reads is get_file_contents
+    mcp_tool = "get_file_contents"
+    logger.info(f"GITHUB TOOL CALL: tool={tool} -> {mcp_tool}, path={path}")
 
     if not path:
         return "Error: 'path' required"
@@ -187,7 +189,7 @@ async def github(
                 "id": f"call-{attempt}",
                 "method": "tools/call",
                 "params": {
-                    "name": tool,
+                    "name": mcp_tool,
                     "arguments": arguments,
                 }
             }
