@@ -90,7 +90,7 @@ async def get_github_oauth_token() -> Optional[str]:
             "iat": now,
             "exp": now + 600,  # 10 minutes
         }
-        jwt_token = jwt.encode(GH_OAUTH_PRIVATE_KEY, payload, algorithm="RS256")
+        jwt_token = jwt.encode(payload, GH_OAUTH_PRIVATE_KEY, algorithm="RS256")
 
         # Get installation access token
         async with httpx.AsyncClient() as client:
