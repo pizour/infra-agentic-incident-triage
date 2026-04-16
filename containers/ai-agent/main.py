@@ -81,7 +81,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Shared config ---
-GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "http://github-mcp-server:8080/sse")
+GITHUB_MCP_URL = os.getenv("GITHUB_MCP_URL", "http://github-mcp-server:8080/mcp")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 MCP_API_KEY = os.getenv("MCP_API_KEY", "")
@@ -192,6 +192,9 @@ async def github(
                             }
 
                             result = await session.call_tool("get_file_contents", arguments=args)
+
+                            # Add delay after tool reply
+                            await asyncio.sleep(2.0)
 
                             if result.isError:
                                 if attempt < max_retries:
