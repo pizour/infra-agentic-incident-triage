@@ -143,19 +143,16 @@ agent = Agent(
 @agent.tool
 async def github(
     ctx: RunContext[None],
-    action: str,
+    tool: str,
     path: Optional[str] = None,
 ) -> str:
     """
-    Interact with the GitHub repository via hosted MCP endpoint.
-    Actions:
-      - read_file / get_file_contents: Read content of a file
-      - list_files / list_directory: List files in a directory
+    Call GitHub MCP tools. The agent specifies which tool to use.
+    Examples:
+      - tool='get_file_contents', path='/skills/nexus_routing/skill.md'
+      - tool='get_repository_tree', path='agents/'
     """
-    logger.info(f"GITHUB MCP CALL: action={action}, path={path}")
-
-    if action not in ["read_file", "get_file_contents", "list_files", "list_directory"]:
-        return f"Unsupported action: {action}. Use 'read_file', 'get_file_contents', 'list_files', or 'list_directory'"
+    logger.info(f"GITHUB TOOL CALL: tool={tool}, path={path}")
 
     if not path:
         return "Error: 'path' required"
@@ -167,35 +164,35 @@ async def github(
     if not gh_token:
         gh_token = GH_PERSONAL_ACCESS_TOKEN
 
-    # Determine MCP tool name
-    mcp_tool_name = "get_file_contents"
-    if action in ["list_files", "list_directory"]:
-        mcp_tool_name = "list_directory"
+    # Build arguments based on tool
+    arguments = {
+        "owner": owner,
+        "repo": repo,
+    }
+
+    if tool == "get_file_contents":
+        arguments["path"] = path
+    elif tool == "get_repository_tree":
+        arguments["path_filter"] = path
+        arguments["recursive"] = False
+    else:
+        arguments["path"] = path
 
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            # Send JSON-RPC request to MCP server via POST
             headers = {
                 "Content-Type": "application/json",
             }
             if gh_token:
                 headers["Authorization"] = f"Bearer {gh_token}"
 
-            # Build arguments based on action
-            arguments = {
-                "owner": owner,
-                "repo": repo,
-                "path": path,
-            }
-
-            # JSON-RPC 2.0 request
             json_rpc_request = {
                 "jsonrpc": "2.0",
                 "id": f"call-{attempt}",
                 "method": "tools/call",
                 "params": {
-                    "name": mcp_tool_name,
+                    "name": tool,
                     "arguments": arguments,
                 }
             }
@@ -208,14 +205,12 @@ async def github(
                     timeout=30.0,
                 )
 
-                # Add delay after tool reply
                 await asyncio.sleep(2.0)
 
-                logger.debug(f"MCP response status: {response.status_code}, content length: {len(response.text)}")
+                logger.debug(f"MCP response status: {response.status_code}")
                 logger.debug(f"MCP response body: {response.text[:200]}")
 
                 if response.status_code == 202:
-                    # Accepted - request was received
                     logger.debug("MCP request accepted (202)")
                     if attempt < max_retries:
                         logger.info(f"Waiting for async response (attempt {attempt}/{max_retries})...")
@@ -232,13 +227,12 @@ async def github(
                         return "Empty response from MCP server"
 
                     try:
-                        # Parse SSE format (event: message\ndata: {...JSON...})
                         lines = response.text.strip().split('\n')
                         json_data = None
 
                         for line in lines:
                             if line.startswith('data: '):
-                                json_str = line[6:]  # Remove 'data: ' prefix
+                                json_str = line[6:]
                                 json_data = json.loads(json_str)
                                 break
 
@@ -249,81 +243,24 @@ async def github(
                                 continue
                             return "No data in SSE response"
 
-                        if "result" in json_data:
-                            result = json_data["result"]
-
-                            # Handle list_directory responses
-                            if action in ["list_files", "list_directory"]:
-                                # For directory listings, format the output
-                                if isinstance(result, list):
-                                    items = []
-                                    for item in result:
-                                        if isinstance(item, dict):
-                                            # Typical directory entry
-                                            name = item.get("name", item.get("path", ""))
-                                            file_type = item.get("type", "file")
-                                            items.append(f"- {name} ({file_type})")
-                                        else:
-                                            items.append(f"- {str(item)}")
-                                    return "Files in directory:\n" + "\n".join(items)
-                                elif isinstance(result, dict) and "content" in result:
-                                    # Handle if wrapped in content
-                                    items = []
-                                    for item in result.get("content", []):
-                                        if isinstance(item, dict):
-                                            name = item.get("name", item.get("path", ""))
-                                            items.append(f"- {name}")
-                                        else:
-                                            items.append(f"- {str(item)}")
-                                    return "Files in directory:\n" + "\n".join(items)
-                                else:
-                                    return f"Directory listing: {str(result)}"
-
-                            # Handle file content responses
-                            content_list = result.get("content", []) if isinstance(result, dict) else result
-
-                            # Extract actual file content
-                            text_parts = []
-                            for item in content_list:
-                                if isinstance(item, dict):
-                                    item_type = item.get("type")
-
-                                    if item_type == "text":
-                                        text = item.get("text", "")
-                                        # Skip metadata messages, include actual content
-                                        if text and len(text) > 100:  # Real content is usually longer
-                                            text_parts.append(text)
-                                    elif item_type == "resource":
-                                        # Extract file content from nested resource object
-                                        resource = item.get("resource", {})
-                                        if isinstance(resource, dict):
-                                            file_content = resource.get("text", "")
-                                            if file_content:
-                                                text_parts.append(file_content)
-
-                            if text_parts:
-                                content = "\n".join(text_parts)
-                                logger.info(f"Extracted content ({len(content)} bytes): {content[:150]}...")
-                                return content
-                            else:
-                                logger.error(f"No content extracted from response")
-                                return "No file content in result"
-
-                        elif "error" in json_data:
+                        if "error" in json_data:
                             error_msg = json_data["error"].get("message", str(json_data["error"]))
                             if attempt < max_retries:
                                 logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {error_msg}. Retrying...")
                                 await asyncio.sleep(0.5)
                                 continue
                             return f"MCP Error (failed after {max_retries} attempts): {error_msg}"
+
+                        # Return raw JSON result for agent to process
+                        if "result" in json_data:
+                            result_json = json.dumps(json_data["result"])
+                            logger.info(f"MCP call successful, result: {result_json[:150]}...")
+                            return result_json
                         else:
-                            logger.debug(f"Unexpected response format: {json_data}")
-                            if attempt < max_retries:
-                                await asyncio.sleep(0.5)
-                                continue
-                            return f"Unexpected MCP response format: {json_data}"
+                            return f"Unexpected response format: {json_data}"
+
                     except Exception as json_err:
-                        logger.warning(f"Failed to parse response: {json_err}, response: {response.text[:100]}")
+                        logger.warning(f"Failed to parse response: {json_err}")
                         if attempt < max_retries:
                             await asyncio.sleep(0.5)
                             continue
@@ -343,7 +280,7 @@ async def github(
             logger.error(f"GitHub MCP call failed after {max_retries} attempts: {e}")
             return f"Exception during GitHub MCP call (failed after {max_retries} attempts): {str(e)}"
 
-    return "Failed to retrieve file after retries"
+    return "Failed after retries"
 
 class RunRequest(BaseModel):
     input: str

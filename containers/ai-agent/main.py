@@ -151,235 +151,149 @@ async def github(
     path: str = None,
 ) -> str:
     """
-    Read files from the GitHub repository.
+    Interact with the GitHub repository via MCP.
     Actions:
       - read_skill: Read a skill/SOP or any file from GitHub (requires 'path')
-      - list_files/list_directory: List files in a directory
+      - list_directory: List files in a directory (requires 'path', e.g., 'agents/', 'skills/')
     """
-    logger.info(f"GITHUB TOOL CALL: action={action}, path={path}")
+    logger.info(f"GITHUB TOOL CALL: tool={action}, path={path}")
     with tracer.start_as_current_span(f"github.{action}") as span:
-        span.set_attribute("action", action)
+        span.set_attribute("tool", action)
 
-        # Handle list_files action
-        if action in ["list_files", "list_directory"]:
-            if not path:
-                return "Error: 'path' required for list_files"
+        owner, repo = GITHUB_REPO.split('/')
 
-            owner, repo = GITHUB_REPO.split('/')
+        # Map action to MCP tool name
+        mcp_tool_name = action  # Agent passes the actual tool name
+        if action == "read_skill":
+            mcp_tool_name = "get_file_contents"
 
-            # Try to get OAuth token first, fallback to PAT
-            gh_token = await get_github_oauth_token()
-            if not gh_token:
-                gh_token = GH_PERSONAL_ACCESS_TOKEN
+        if not path:
+            return "Error: 'path' required"
 
-            max_retries = 3
-            for attempt in range(1, max_retries + 1):
-                try:
-                    headers = {"Content-Type": "application/json"}
-                    if gh_token:
-                        headers["Authorization"] = f"Bearer {gh_token}"
+        # Try to get OAuth token first, fallback to PAT
+        gh_token = await get_github_oauth_token()
+        if not gh_token:
+            gh_token = GH_PERSONAL_ACCESS_TOKEN
 
-                    json_rpc_request = {
-                        "jsonrpc": "2.0",
-                        "id": f"call-{attempt}",
-                        "method": "tools/call",
-                        "params": {
-                            "name": "list_directory",
-                            "arguments": {
-                                "owner": owner,
-                                "repo": repo,
-                                "path": path,
-                            }
-                        }
+        # Build arguments based on tool
+        arguments = {
+            "owner": owner,
+            "repo": repo,
+        }
+
+        if mcp_tool_name == "get_file_contents":
+            # For read_skill, adjust path if needed
+            file_path = f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path
+            arguments["path"] = file_path
+        elif mcp_tool_name == "get_repository_tree":
+            arguments["path_filter"] = path
+            arguments["recursive"] = False
+        else:
+            arguments["path"] = path
+
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                headers = {
+                    "Content-Type": "application/json",
+                }
+                if gh_token:
+                    headers["Authorization"] = f"Bearer {gh_token}"
+
+                json_rpc_request = {
+                    "jsonrpc": "2.0",
+                    "id": f"call-{attempt}",
+                    "method": "tools/call",
+                    "params": {
+                        "name": mcp_tool_name,
+                        "arguments": arguments,
                     }
+                }
 
-                    async with httpx.AsyncClient() as client:
-                        response = await client.post(GITHUB_MCP_URL, json=json_rpc_request, headers=headers, timeout=30.0)
-                        await asyncio.sleep(2.0)
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        GITHUB_MCP_URL,
+                        json=json_rpc_request,
+                        headers=headers,
+                        timeout=30.0,
+                    )
 
-                        if response.status_code == 200:
+                    await asyncio.sleep(2.0)
+
+                    logger.debug(f"MCP response status: {response.status_code}")
+                    logger.debug(f"MCP response body: {response.text[:200]}")
+
+                    if response.status_code == 202:
+                        logger.debug("MCP request accepted (202)")
+                        if attempt < max_retries:
+                            logger.info(f"Waiting for async response (attempt {attempt}/{max_retries})...")
+                            await asyncio.sleep(1.0)
+                            continue
+                        return "MCP request accepted but no response received"
+
+                    elif response.status_code == 200:
+                        if not response.text:
+                            if attempt < max_retries:
+                                logger.warning(f"Empty response (attempt {attempt}/{max_retries}). Retrying...")
+                                await asyncio.sleep(0.5)
+                                continue
+                            return "Empty response from MCP server"
+
+                        try:
                             lines = response.text.strip().split('\n')
+                            json_data = None
+
                             for line in lines:
                                 if line.startswith('data: '):
                                     json_str = line[6:]
                                     json_data = json.loads(json_str)
-
-                                    if "result" in json_data:
-                                        result = json_data["result"]
-                                        # Format directory listing
-                                        if isinstance(result, list):
-                                            items = [f"- {item.get('name', str(item)) if isinstance(item, dict) else item}" for item in result]
-                                            return "Files in directory:\n" + "\n".join(items)
-                                        elif isinstance(result, dict) and "content" in result:
-                                            items = [f"- {item.get('name', str(item))}" for item in result.get("content", [])]
-                                            return "Files in directory:\n" + "\n".join(items)
-                                        else:
-                                            return f"Directory listing: {str(result)}"
                                     break
-                except Exception as e:
-                    if attempt < max_retries:
-                        logger.warning(f"List attempt {attempt}/{max_retries} failed: {e}")
-                        await asyncio.sleep(0.5)
-                        continue
-                    return f"Failed to list directory: {str(e)}"
 
-            return "Failed to list directory after retries"
-
-        elif action == "read_skill":
-            if not path:
-                return "Error: 'path' required for read_skill"
-
-            owner, repo = GITHUB_REPO.split('/')
-            file_path = f"skills/{path}" if path and not path.startswith("skills/") and not path.startswith("mcp/") and not path.startswith("agents/") else path
-
-            # Try to get OAuth token first, fallback to PAT
-            gh_token = await get_github_oauth_token()
-            if not gh_token:
-                gh_token = GH_PERSONAL_ACCESS_TOKEN
-
-            max_retries = 3
-            for attempt in range(1, max_retries + 1):
-                try:
-                    # Send JSON-RPC request to MCP server via POST
-                    headers = {
-                        "Content-Type": "application/json",
-                    }
-                    if gh_token:
-                        headers["Authorization"] = f"Bearer {gh_token}"
-
-                    # JSON-RPC 2.0 request
-                    json_rpc_request = {
-                        "jsonrpc": "2.0",
-                        "id": f"call-{attempt}",
-                        "method": "tools/call",
-                        "params": {
-                            "name": "get_file_contents",
-                            "arguments": {
-                                "owner": owner,
-                                "repo": repo,
-                                "path": file_path,
-                            }
-                        }
-                    }
-
-                    async with httpx.AsyncClient() as client:
-                        response = await client.post(
-                            GITHUB_MCP_URL,
-                            json=json_rpc_request,
-                            headers=headers,
-                            timeout=30.0,
-                        )
-
-                        # Add delay after tool reply
-                        await asyncio.sleep(2.0)
-
-                        logger.debug(f"MCP response status: {response.status_code}, content length: {len(response.text)}")
-                        logger.debug(f"MCP response body: {response.text[:200]}")
-
-                        if response.status_code == 202:
-                            # Accepted - request was received
-                            logger.debug("MCP request accepted (202)")
-                            if attempt < max_retries:
-                                logger.info(f"Waiting for async response (attempt {attempt}/{max_retries})...")
-                                await asyncio.sleep(1.0)
-                                continue
-                            return "MCP request accepted but no response received"
-
-                        elif response.status_code == 200:
-                            if not response.text:
-                                if attempt < max_retries:
-                                    logger.warning(f"Empty response (attempt {attempt}/{max_retries}). Retrying...")
-                                    await asyncio.sleep(0.5)
-                                    continue
-                                return "Empty response from MCP server"
-
-                            try:
-                                # Parse SSE format (event: message\ndata: {...JSON...})
-                                lines = response.text.strip().split('\n')
-                                json_data = None
-
-                                for line in lines:
-                                    if line.startswith('data: '):
-                                        json_str = line[6:]  # Remove 'data: ' prefix
-                                        json_data = json.loads(json_str)
-                                        break
-
-                                if not json_data:
-                                    logger.warning(f"No data line found in SSE response")
-                                    if attempt < max_retries:
-                                        await asyncio.sleep(0.5)
-                                        continue
-                                    return "No data in SSE response"
-
-                                if "result" in json_data:
-                                    content_list = json_data["result"].get("content", [])
-
-                                    # Extract actual file content
-                                    text_parts = []
-                                    for item in content_list:
-                                        if isinstance(item, dict):
-                                            item_type = item.get("type")
-
-                                            if item_type == "text":
-                                                text = item.get("text", "")
-                                                # Skip metadata messages, include actual content
-                                                if text and len(text) > 100:  # Real content is usually longer
-                                                    text_parts.append(text)
-                                            elif item_type == "resource":
-                                                # Extract file content from nested resource object
-                                                resource = item.get("resource", {})
-                                                if isinstance(resource, dict):
-                                                    file_content = resource.get("text", "")
-                                                    if file_content:
-                                                        text_parts.append(file_content)
-
-                                    if text_parts:
-                                        content = "\n".join(text_parts)
-                                        logger.info(f"Extracted content ({len(content)} bytes): {content[:150]}...")
-                                        span.set_attribute("content_length", len(content))
-                                        return content
-                                    else:
-                                        logger.error(f"No content extracted from response")
-                                        return "No file content in result"
-
-                                elif "error" in json_data:
-                                    error_msg = json_data["error"].get("message", str(json_data["error"]))
-                                    if attempt < max_retries:
-                                        logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {error_msg}. Retrying...")
-                                        await asyncio.sleep(0.5)
-                                        continue
-                                    return f"MCP Error (failed after {max_retries} attempts): {error_msg}"
-                                else:
-                                    logger.debug(f"Unexpected response format: {json_data}")
-                                    if attempt < max_retries:
-                                        await asyncio.sleep(0.5)
-                                        continue
-                                    return f"Unexpected MCP response format: {json_data}"
-                            except Exception as json_err:
-                                logger.warning(f"Failed to parse response: {json_err}, response: {response.text[:100]}")
+                            if not json_data:
+                                logger.warning(f"No data line found in SSE response")
                                 if attempt < max_retries:
                                     await asyncio.sleep(0.5)
                                     continue
-                                return f"Failed to parse MCP response: {str(json_err)}"
-                        else:
+                                return "No data in SSE response"
+
+                            if "error" in json_data:
+                                error_msg = json_data["error"].get("message", str(json_data["error"]))
+                                if attempt < max_retries:
+                                    logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {error_msg}. Retrying...")
+                                    await asyncio.sleep(0.5)
+                                    continue
+                                return f"MCP Error (failed after {max_retries} attempts): {error_msg}"
+
+                            # Return raw JSON result for agent to process
+                            if "result" in json_data:
+                                result_json = json.dumps(json_data["result"])
+                                logger.info(f"MCP call successful, result: {result_json[:150]}...")
+                                return result_json
+                            else:
+                                return f"Unexpected response format: {json_data}"
+
+                        except Exception as json_err:
+                            logger.warning(f"Failed to parse response: {json_err}")
                             if attempt < max_retries:
-                                logger.warning(f"MCP HTTP {response.status_code} (attempt {attempt}/{max_retries}). Retrying...")
                                 await asyncio.sleep(0.5)
                                 continue
-                            return f"MCP HTTP Error {response.status_code}: {response.text}"
-
-                except Exception as e:
-                    if attempt < max_retries:
-                        logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} exception: {str(e)}. Retrying...")
-                        await asyncio.sleep(0.5)
-                        continue
+                            return f"Failed to parse MCP response: {str(json_err)}"
                     else:
-                        logger.error(f"GitHub MCP call failed after {max_retries} attempts: {e}")
-                        return f"Exception during GitHub MCP call (failed after {max_retries} attempts): {str(e)}"
+                        if attempt < max_retries:
+                            logger.warning(f"MCP HTTP {response.status_code} (attempt {attempt}/{max_retries}). Retrying...")
+                            await asyncio.sleep(0.5)
+                            continue
+                        return f"MCP HTTP Error {response.status_code}: {response.text}"
 
-            return "Failed to retrieve file after retries"
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning(f"GitHub MCP attempt {attempt}/{max_retries} exception: {str(e)}. Retrying...")
+                    await asyncio.sleep(0.5)
+                    continue
+                logger.error(f"GitHub MCP call failed after {max_retries} attempts: {e}")
+                return f"Exception during GitHub MCP call (failed after {max_retries} attempts): {str(e)}"
 
-        return f"Unknown action: {action}"
+        return "Failed after retries"
 
 # Authentication Setup
 API_KEY_NAME = "X-API-Key"
