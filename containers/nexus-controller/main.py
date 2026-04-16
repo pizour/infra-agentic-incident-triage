@@ -173,13 +173,16 @@ async def github(
         "repo": repo,
         "path": path,
     }
-    if gh_token:
-        params["token"] = gh_token
 
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            async with sse_client(GITHUB_MCP_URL, timeout=30.0) as (read, write):
+            # Pass OAuth token as Authorization header if available
+            headers = {}
+            if gh_token:
+                headers["Authorization"] = f"Bearer {gh_token}"
+
+            async with sse_client(GITHUB_MCP_URL, timeout=30.0, headers=headers) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     logger.debug(f"MCP tool='get_file_contents' params={params}")
