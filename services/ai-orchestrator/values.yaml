@@ -68,6 +68,11 @@ env:
 
 # Secrets injected as env vars from K8s Secret
 secrets:
-  APP_API_KEY: "" 
+  APP_API_KEY: ""
   LANGFUSE_PUBLIC_KEY: ""
   LANGFUSE_SECRET_KEY: ""
+  GH_OAUTH_APP_ID: ""
+  GH_OAUTH_CLIENT_ID: ""
+  GH_OAUTH_CLIENT_SECRET: ""
+  GH_OAUTH_PRIVATE_KEY: ""
+  GH_OAUTH_INSTALLATION_ID: ""

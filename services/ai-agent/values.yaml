@@ -78,3 +78,9 @@ secrets:
   ZAMMAD_TOKEN: "" # Loaded via pipeline
   ZAMMAD_USER: "" # Loaded via pipeline (admin email for basic auth)
   ZAMMAD_PASS: "" # Loaded via pipeline (admin password for basic auth)
+  GH_PERSONAL_ACCESS_TOKEN: "" # Loaded via pipeline
+  GH_OAUTH_APP_ID: "" # Loaded via pipeline
+  GH_OAUTH_CLIENT_ID: "" # Loaded via pipeline
+  GH_OAUTH_CLIENT_SECRET: "" # Loaded via pipeline
+  GH_OAUTH_PRIVATE_KEY: "" # Loaded via pipeline
+  GH_OAUTH_INSTALLATION_ID: "" # Loaded via pipeline

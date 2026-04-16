@@ -3,6 +3,8 @@ import json
 import httpx
 import base64
 import asyncio
+import jwt
+import time
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -70,6 +72,41 @@ GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 MCP_API_KEY = os.getenv("MCP_API_KEY", "")
 GH_PERSONAL_ACCESS_TOKEN = os.getenv("GH_PERSONAL_ACCESS_TOKEN", "")
 
+# --- GitHub OAuth Setup ---
+GH_OAUTH_APP_ID = os.getenv("GH_OAUTH_APP_ID", "")
+GH_OAUTH_PRIVATE_KEY = os.getenv("GH_OAUTH_PRIVATE_KEY", "")
+GH_OAUTH_INSTALLATION_ID = os.getenv("GH_OAUTH_INSTALLATION_ID", "")
+
+async def get_github_oauth_token() -> Optional[str]:
+    """Get a GitHub App installation access token using OAuth credentials."""
+    if not all([GH_OAUTH_APP_ID, GH_OAUTH_PRIVATE_KEY, GH_OAUTH_INSTALLATION_ID]):
+        return None
+
+    try:
+        # Create JWT from App private key
+        now = int(time.time())
+        payload = {
+            "iss": int(GH_OAUTH_APP_ID),
+            "iat": now,
+            "exp": now + 600,  # 10 minutes
+        }
+        jwt_token = jwt.encode(GH_OAUTH_PRIVATE_KEY, payload, algorithm="RS256")
+
+        # Get installation access token
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.github.com/app/installations/{GH_OAUTH_INSTALLATION_ID}/access_tokens",
+                headers={"Authorization": f"Bearer {jwt_token}", "Accept": "application/vnd.github+json"},
+                timeout=10.0,
+            )
+            if response.status_code == 201:
+                data = response.json()
+                return data.get("token")
+    except Exception as e:
+        logger.warning(f"Failed to get GitHub OAuth token: {e}")
+
+    return None
+
 app = FastAPI(title="Nexus-Controller (Pydantic-AI)")
 FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
 Instrumentator().instrument(app).expose(app)
@@ -125,17 +162,23 @@ async def github(
         return "Error: 'path' required"
 
     owner, repo = GITHUB_REPO.split('/')
+
+    # Try to get OAuth token first, fallback to PAT
+    gh_token = await get_github_oauth_token()
+    if not gh_token:
+        gh_token = GH_PERSONAL_ACCESS_TOKEN
+
     params = {
         "owner": owner,
         "repo": repo,
         "path": path,
     }
+    if gh_token:
+        params["token"] = gh_token
 
     max_retries = 3
     for attempt in range(1, max_retries + 1):
         try:
-            # Local GitHub MCP server doesn't require authentication headers
-            # It uses GITHUB_PERSONAL_ACCESS_TOKEN internally to authenticate with GitHub
             async with sse_client(GITHUB_MCP_URL, timeout=30.0) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
