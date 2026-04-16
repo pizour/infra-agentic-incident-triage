@@ -50,7 +50,10 @@ Apply the following rules strictly in order:
    - `release-agent` is always the last step for `grafana` source; only output `finish` after it completes successfully.
 
 ## Output Format
-Your final output must be a routing decision (`retry`, `next_agent`, or `finish`) with `feedback` containing instructions or findings, and `target_agent` when applicable.
+Your final output must be a routing decision (`retry`, `next_agent`, or `finish`) with:
+- `feedback`: instructions or findings
+- `target_agent`: routing key of the next agent (when applicable)
+- `agent_env_vars`: when routing to a `next_agent`, read the agent's `.md` file (e.g. `agents/specialists/vm-tshooter.md`) and copy the entire `env_vars` block from the YAML frontmatter into this field as a dict. This is how the agent pod receives its `SYSTEM_PROMPT` and any other configuration. If no `env_vars` are defined in the frontmatter, set this to `null`.
 
 ---
 

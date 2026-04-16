@@ -125,6 +125,7 @@ class NexusRoutingDecision(BaseModel):
     action: str
     feedback: str
     target_agent: Optional[str] = None
+    agent_env_vars: Optional[dict] = None  # env_vars from agent .md frontmatter (e.g. SYSTEM_PROMPT)
 
 ROUTER_SYSTEM_PROMPT = (
     "You are the Nexus Controller. Your task is to evaluate the provided validation state and make a routing decision.\n"

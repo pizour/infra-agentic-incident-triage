@@ -146,29 +146,59 @@ class CompleteState(TypedDict):
     next_agent: Optional[str]
     next_instructions: str
     retry_count: int  # Track retries; max 3 attempts per agent
+    agent_env_vars: Optional[dict]  # env_vars from agent .md frontmatter, set by nexus-controller
 
 
 # ── Kubernetes Pod Lifecycle Helper ───────────────────────────────────────────
 
-async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str]) -> str:
+async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], system_prompt: Optional[str] = None) -> str:
     pod_name = f"agent-{agent_id.replace('_', '-')}-{int(time.time())}"
     port = 8000
     logger.info(f"SPAWNING POD: {pod_name} for agent={agent_id}")
     
-    # Build environment variables dynamically from router response
-    env = []
-    for k, v in env_vars.items():
-        env.append(client.V1EnvVar(name=k, value=str(v)))
+    # Static env vars (same as Helm values.yaml env section)
+    static_env = {
+        "OTEL_EXPORTER_OTLP_ENDPOINT": os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"),
+        "PHOENIX_CLIENT_HEADERS": os.getenv("PHOENIX_CLIENT_HEADERS", "api_key=unused"),
+        "LLM_MODEL": os.getenv("LLM_MODEL", "gemini-2.5-flash"),
+        "GUARDRAILS_URL": os.getenv("GUARDRAILS_URL", "http://guardrails.ai-agent.svc.cluster.local:8080"),
+        "ZAMMAD_URL": os.getenv("ZAMMAD_URL", "http://zammad.zammad.svc.cluster.local:8080"),
+        "LANGFUSE_HOST": os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000"),
+        "GITHUB_MCP_URL": os.getenv("GITHUB_MCP_URL", "http://github-mcp-server:8080/mcp"),
+        "GITHUB_REPO": os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage"),
+        "NAMESPACE": NAMESPACE,
+    }
+    # Override/extend with caller-provided env vars
+    static_env.update(env_vars)
 
-    # Ensure LLM_MODEL is present if not provided by router
-    if "LLM_MODEL" not in env_vars:
-        env.append(client.V1EnvVar(name="LLM_MODEL", value=os.getenv("LLM_MODEL", "gemini-2.0-flash")))
+    env = [client.V1EnvVar(name=k, value=str(v)) for k, v in static_env.items()]
+
+    # Mount all secrets from ai-agent-secrets (same keys as Helm secrets section)
+    secret_keys = [
+        "APP_API_KEY", "MCP_API_KEY", "NETBOX_MCP_API_KEY",
+        "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY",
+        "ZAMMAD_TOKEN", "ZAMMAD_USER", "ZAMMAD_PASS",
+        "GH_PERSONAL_ACCESS_TOKEN",
+        "GH_OAUTH_APP_ID", "GH_OAUTH_CLIENT_ID", "GH_OAUTH_CLIENT_SECRET",
+        "GH_OAUTH_PRIVATE_KEY", "GH_OAUTH_INSTALLATION_ID",
+    ]
+    for key in secret_keys:
+        env.append(client.V1EnvVar(
+            name=key,
+            value_from=client.V1EnvVarSource(
+                secret_key_ref=client.V1SecretKeySelector(name="ai-agent-secrets", key=key, optional=True)
+            )
+        ))
+
+    # Use the same service account as the static deployment (GKE Workload Identity for GCP auth)
+    agent_service_account = os.getenv("AGENT_SERVICE_ACCOUNT", "ai-agent")
 
     pod = client.V1Pod(
         api_version="v1",
         kind="Pod",
         metadata=client.V1ObjectMeta(name=pod_name, labels={"app": "ai-agent", "agent-type": agent_id}),
         spec=client.V1PodSpec(
+            service_account_name=agent_service_account,
             containers=[
                 client.V1Container(
                     name="agent",
@@ -205,8 +235,12 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str]) ->
             
         agent_url = f"http://{pod_ip}:{port}/agent"
         logger.info(f"CALLING AGENT: {agent_id} at {agent_url}")
+        agent_api_key = os.getenv("APP_API_KEY", "")
+        body: Dict[str, Any] = {"prompt": prompt}
+        if system_prompt:
+            body["system_prompt"] = system_prompt
         async with httpx.AsyncClient(timeout=300.0) as client_http:
-            resp = await client_http.post(agent_url, json={"prompt": prompt})
+            resp = await client_http.post(agent_url, json=body, headers={"X-API-Key": agent_api_key})
             resp.raise_for_status()
             logger.info(f"AGENT {agent_id} RESPONSE RECEIVED")
             return resp.json().get("result", "")
@@ -237,8 +271,9 @@ async def node_nexus_controller(state: CompleteState) -> dict:
                 action = data.get("action", "finish")
                 target_agent = data.get("target_agent")
                 feedback = data.get("feedback", "")
+                agent_env_vars = data.get("agent_env_vars") or {}
                 logger.info(f"CONTROLLER DECISION: action={action}, target={target_agent}")
-                return {"next_action": action, "next_agent": target_agent, "next_instructions": feedback}
+                return {"next_action": action, "next_agent": target_agent, "next_instructions": feedback, "agent_env_vars": agent_env_vars}
             except httpx.TimeoutException as e:
                 logger.error(f"CONTROLLER TIMEOUT: nexus-controller exceeded timeout. Finishing workflow. {e}")
                 span.set_attribute("timeout", True)
@@ -299,8 +334,11 @@ async def node_executor(state: CompleteState) -> dict:
         span.set_attribute("attempt", current_retry)
         prompt = str(state.get("next_instructions") or state["input"])
 
+        agent_env_vars = dict(state.get("agent_env_vars") or {})
+        system_prompt = agent_env_vars.pop("SYSTEM_PROMPT", None)
+
         try:
-            result_str = await run_agent_pod(str(agent_id), prompt, {})
+            result_str = await run_agent_pod(str(agent_id), prompt, agent_env_vars, system_prompt=system_prompt)
         except Exception as e:
             logger.error(f"Pod failed for agent {agent_id}: {e}")
             span.record_exception(e)

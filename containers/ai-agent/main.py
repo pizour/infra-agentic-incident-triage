@@ -308,6 +308,7 @@ def get_api_key(api_key_header: str = Security(api_key_header)):
 
 class AgentRequest(BaseModel):
     prompt: str
+    system_prompt: Optional[str] = None  # Injected by orchestrator from agent .md frontmatter
 
 class AgentResponse(BaseModel):
     result: str
@@ -326,8 +327,13 @@ async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key))
     """Standard agent endpoint for manual queries."""
     logger.info(f"RUNNING AGENT: prompt='{request.prompt[:100]}...'")
     try:
-        result = await agent.run(request.prompt)
-        
+        run_kwargs = {}
+        if request.system_prompt:
+            logger.info("Using orchestrator-provided system prompt")
+            run_kwargs["system_prompt"] = request.system_prompt
+
+        result = await agent.run(request.prompt, **run_kwargs)
+
         # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
         output = getattr(result, "output", getattr(result, "data", None))
         if output is None:
