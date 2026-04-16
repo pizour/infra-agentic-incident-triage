@@ -223,30 +223,61 @@ async def github(
                         return "Empty response from MCP server"
 
                     try:
-                        data = response.json()
-                        if "result" in data:
-                            content = data["result"].get("content", "")
-                            if content:
-                                return content
-                        elif "error" in data:
-                            error_msg = data["error"].get("message", str(data["error"]))
+                        # Parse SSE format (event: message\ndata: {...JSON...})
+                        lines = response.text.strip().split('\n')
+                        json_data = None
+
+                        for line in lines:
+                            if line.startswith('data: '):
+                                json_str = line[6:]  # Remove 'data: ' prefix
+                                json_data = json.loads(json_str)
+                                break
+
+                        if not json_data:
+                            logger.warning(f"No data line found in SSE response")
+                            if attempt < max_retries:
+                                await asyncio.sleep(0.5)
+                                continue
+                            return "No data in SSE response"
+
+                        if "result" in json_data:
+                            content_list = json_data["result"].get("content", [])
+                            # Extract text from content array
+                            text_parts = []
+                            for item in content_list:
+                                if isinstance(item, dict) and item.get("type") == "text":
+                                    text = item.get("text", "")
+                                    if text:
+                                        text_parts.append(text)
+                                elif isinstance(item, dict) and item.get("type") == "resource":
+                                    # Handle resource type
+                                    resource_uri = item.get("uri", "")
+                                    text_parts.append(f"[Resource: {resource_uri}]")
+
+                            if text_parts:
+                                return "\n".join(text_parts)
+                            else:
+                                return "No text content in result"
+
+                        elif "error" in json_data:
+                            error_msg = json_data["error"].get("message", str(json_data["error"]))
                             if attempt < max_retries:
                                 logger.warning(f"MCP error (attempt {attempt}/{max_retries}): {error_msg}. Retrying...")
                                 await asyncio.sleep(0.5)
                                 continue
                             return f"MCP Error (failed after {max_retries} attempts): {error_msg}"
                         else:
-                            logger.debug(f"Unexpected response format: {data}")
+                            logger.debug(f"Unexpected response format: {json_data}")
                             if attempt < max_retries:
                                 await asyncio.sleep(0.5)
                                 continue
-                            return f"Unexpected MCP response format: {data}"
+                            return f"Unexpected MCP response format: {json_data}"
                     except Exception as json_err:
-                        logger.warning(f"Failed to parse response JSON: {json_err}, response: {response.text[:100]}")
+                        logger.warning(f"Failed to parse response: {json_err}, response: {response.text[:100]}")
                         if attempt < max_retries:
                             await asyncio.sleep(0.5)
                             continue
-                        return f"Invalid JSON response from MCP: {str(json_err)}"
+                        return f"Failed to parse MCP response: {str(json_err)}"
                 else:
                     if attempt < max_retries:
                         logger.warning(f"MCP HTTP {response.status_code} (attempt {attempt}/{max_retries}). Retrying...")
