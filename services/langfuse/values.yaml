@@ -1,6 +1,8 @@
 # Values for the official langfuse-k8s Helm chart (v3)
 # All keys are scoped under `langfuse:` to match the dependency chart name.
 langfuse:
+  replicas: 1
+
   langfuse:
     nextauth:
       secret:
