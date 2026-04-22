@@ -13,7 +13,7 @@ load_dotenv()
 # --- OpenTelemetry / Arize Phoenix Setup ---
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -39,7 +39,7 @@ propagate.set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 try:
     exporter = OTLPSpanExporter(endpoint=endpoint)
-    provider.add_span_processor(BatchSpanProcessor(exporter))
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
 except Exception as e:
     pass  # Will log after logger is imported
 
@@ -53,7 +53,7 @@ if langfuse_public_key and langfuse_secret_key:
     encoded_auth = base64.b64encode(auth_str.encode()).decode()
     lf_headers = {"Authorization": f"Basic {encoded_auth}"}
     lf_endpoint = f"{langfuse_host}/api/public/otlp/v1/traces"
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
+    provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
 
 
 # Instrument frames and libraries

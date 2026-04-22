@@ -1,43 +1,81 @@
-fullnameOverride: "langfuse"
+# Values for the official langfuse-k8s Helm chart (v3)
+# All keys are scoped under `langfuse:` to match the dependency chart name.
+langfuse:
+  langfuse:
+    nextauth:
+      secret:
+        value: "my-nextauth-secret-replace-in-production"
+      url: "http://langfuse-web.ai-agent.svc.cluster.local:3000"
+    salt:
+      value: "my-salt-replace-in-production"
+    encryptionKey:
+      value: "00000000000000000000000000000000000000000000000000000000000000ff"
 
-image:
-  repository: langfuse/langfuse
-  tag: 2
-  pullPolicy: IfNotPresent
+    features:
+      signUpDisabled: true
+      telemetryEnabled: false
 
-service:
-  port: 3000
+    # Headless initialization — creates org/project/user on first boot
+    additionalEnv:
+      - name: LANGFUSE_INIT_ORG_ID
+        value: "ai-incident-triage"
+      - name: LANGFUSE_INIT_ORG_NAME
+        value: "AI Incident Triage"
+      - name: LANGFUSE_INIT_PROJECT_ID
+        value: "production"
+      - name: LANGFUSE_INIT_PROJECT_NAME
+        value: "Production"
+      - name: LANGFUSE_INIT_PROJECT_PUBLIC_KEY
+        valueFrom:
+          secretKeyRef:
+            name: langfuse-secrets
+            key: LANGFUSE_PUBLIC_KEY
+      - name: LANGFUSE_INIT_PROJECT_SECRET_KEY
+        valueFrom:
+          secretKeyRef:
+            name: langfuse-secrets
+            key: LANGFUSE_SECRET_KEY
+      - name: LANGFUSE_INIT_USER_EMAIL
+        value: "admin@internal.local"
+      - name: LANGFUSE_INIT_USER_PASSWORD
+        value: "adminpassword123"
+      - name: NEXTAUTH_URL
+        value: "http://langfuse-web.ai-agent.svc.cluster.local:3000"
 
-postgres:
-  image:
-    repository: postgres
-    tag: 16-alpine
-    pullPolicy: IfNotPresent
-  user: langfuse
-  database: langfuse
-  password: "langfusepassword"
-  service:
-    port: 5432
-  persistence:
-    size: 5Gi
-    storageClass: "standard"
+  # PostgreSQL (Bitnami sub-chart)
+  postgresql:
+    deploy: true
+    auth:
+      username: langfuse
+      password: "langfusepassword"
+      database: langfuse
+    primary:
+      persistence:
+        size: 5Gi
+        storageClass: "standard"
 
-env:
-  # Langfuse Environment Variables
-  HOSTNAME: "0.0.0.0"
-  NEXTAUTH_SECRET: "my-secret-key-replace-in-production"
-  SALT: "my-salt-replace-in-production"
-  NEXTAUTH_URL: "http://localhost:3001"
-  DATABASE_URL: "postgresql://langfuse:langfusepassword@localhost:5432/langfuse"
-  # Disable auth for dev if possible, but Langfuse usually requires it.
-  AUTH_DISABLE_SIGNUP: "true"
-  # Headless Initialization (IDs and keys are REQUIRED to trigger creation)
-  LANGFUSE_INIT_ORG_ID: "ai-incident-triage"
-  LANGFUSE_INIT_ORG_NAME: "AI Incident Triage"
-  LANGFUSE_INIT_PROJECT_ID: "production"
-  LANGFUSE_INIT_PROJECT_NAME: "Production"
-  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: "pk-lf-123456789"
-  LANGFUSE_INIT_PROJECT_SECRET_KEY: "sk-lf-123456789"
-  LANGFUSE_INIT_USER_EMAIL: "admin@internal.local"
-  LANGFUSE_INIT_USER_PASSWORD: "adminpassword123"
-  # LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+  # Redis (Bitnami sub-chart)
+  redis:
+    deploy: true
+    auth:
+      enabled: false
+
+  # ClickHouse (sub-chart)
+  clickhouse:
+    deploy: true
+    auth:
+      username: clickhouse
+      password: "clickhousepassword"
+    persistence:
+      size: 10Gi
+      storageClass: "standard"
+
+  # MinIO as S3 blob store (built-in, optional but required for event persistence)
+  minio:
+    deploy: true
+    auth:
+      rootUser: "minioadmin"
+      rootPassword: "minioadminpassword"
+    persistence:
+      size: 10Gi
+      storageClass: "standard"

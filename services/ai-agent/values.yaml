@@ -66,7 +66,7 @@ env:
   LLM_MODEL: "gemini-2.5-flash"
   GUARDRAILS_URL: "http://guardrails.ai-agent.svc.cluster.local:8080"
   ZAMMAD_URL: "http://zammad.zammad.svc.cluster.local:8080"
-  LANGFUSE_HOST: "http://langfuse.ai-agent.svc.cluster.local:3000"
+  LANGFUSE_HOST: "http://langfuse-web.ai-agent.svc.cluster.local:3000"
 
 # Secrets injected as env vars from K8s Secret
 secrets:

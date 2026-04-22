@@ -19,7 +19,7 @@ load_dotenv()
 # --- OpenTelemetry / Arize Phoenix Setup ---
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -47,7 +47,7 @@ propagate.set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 try:
     phoenix_exporter = OTLPSpanExporter(endpoint=endpoint)
-    provider.add_span_processor(BatchSpanProcessor(phoenix_exporter))
+    provider.add_span_processor(SimpleSpanProcessor(phoenix_exporter))
     logger.info(f"Phoenix OTLP exporter initialized: {endpoint}")
 except Exception as e:
     logger.error(f"Failed to initialize Phoenix exporter: {e}")
@@ -60,7 +60,7 @@ langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
 if langfuse_public_key and langfuse_secret_key:
     _lf_auth = base64.b64encode(f"{langfuse_public_key}:{langfuse_secret_key}".encode()).decode()
     _lf_endpoint = f"{langfuse_host}/api/public/otlp/v1/traces"
-    provider.add_span_processor(BatchSpanProcessor(
+    provider.add_span_processor(SimpleSpanProcessor(
         OTLPSpanExporter(endpoint=_lf_endpoint, headers={"Authorization": f"Basic {_lf_auth}"})
     ))
     logger.info(f"Langfuse OTLP exporter enabled → {_lf_endpoint}")
@@ -133,12 +133,47 @@ class NexusRoutingDecision(BaseModel):
     target_agent: Optional[str] = None
     agent_env_vars: Optional[dict] = None  # env_vars from agent .md frontmatter (e.g. SYSTEM_PROMPT)
 
-ROUTER_SYSTEM_PROMPT = (
-    "You are the Nexus Controller. Your task is to evaluate the provided validation state and make a routing decision.\n"
-    "CRITICAL: You MUST use your 'github' tool to read 'agents/control-plane/nexus-controller.md' and follow the operating procedures defined there to the detail.\n"
-    "IMPORTANT: If the github tool fails with 'failed after 3 attempts', you MUST return action='finish' to gracefully end the workflow. Do NOT retry or get stuck.\n"
-    "Return NexusRoutingDecision with: action='finish', feedback='Tool failures prevent routing decision', target_agent=None\n"
-)
+ROUTER_SYSTEM_PROMPT = """You are the Nexus Controller. Evaluate the incoming validation state and produce a NexusRoutingDecision.
+
+## Available Agents (do NOT query GitHub to discover these)
+
+| routing_key       | class       | description |
+|-------------------|-------------|-------------|
+| vm_tshooter       | specialist  | SSH-based investigation for Linux VMs (CPU, memory, disk, services) |
+| k8s_tshooter      | specialist  | Kubernetes/GKE investigation (pods, nodes, services, events) |
+| deep_investigate  | specialist  | Generic investigation for ambiguous or complex alerts |
+| analyse           | specialist  | Security analysis — interprets evidence, issues VERDICT: THREAT / BENIGN |
+| create_ticket     | interaction | Creates Zammad incident ticket from final analysis |
+
+## agent_env_vars
+
+When routing to a next_agent, you MUST include the full env_vars block from that agent's .md file.
+Use the github tool to read the specific agent .md file (e.g. agents/specialists/vm-tshooter.md) ONLY when you have already decided on a target_agent.
+Copy the YAML env_vars block as a dict into agent_env_vars. If no env_vars exist, set null.
+
+## Routing Rules (apply in order)
+
+1. First request (latest_validation is null OR validation_history empty):
+   - Skip quality checks. Route directly to the appropriate investigation agent.
+   - For grafana source + CPU/VM alerts → vm_tshooter
+   - For grafana source + K8s alerts → k8s_tshooter
+   - For ambiguous alerts → deep_investigate
+
+2. Safety: if safety_check is False → action=finish immediately.
+
+3. Quality thresholds (subsequent requests only):
+   - If accuracy < 0.8 OR correctness < 0.8 OR completeness < 0.8 → action=retry
+
+4. Pipeline progression (grafana source):
+   After vm_tshooter/k8s_tshooter/deep_investigate → route to analyse
+   After analyse → route to create_ticket
+   After create_ticket → action=finish
+
+5. Finish: user/api source with passing scores → action=finish with summary in feedback.
+
+## Error handling
+If the github tool fails with 'failed after 3 attempts', return action=finish, feedback='Tool failures prevent routing decision', target_agent=None.
+"""
 
 agent = Agent(
     model,
