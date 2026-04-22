@@ -27,7 +27,7 @@ from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from opentelemetry.baggage.propagation import BaggagePropagator
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 import httpx
@@ -41,10 +41,7 @@ trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
 
 # Register W3C propagators so incoming traceparent headers are honoured
-propagate.set_global_textmap(CompositePropagator([
-    TraceContextTextMapPropagator(),
-    BaggagePropagator(),
-]))
+propagate.set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()]))
 
 # Arize Phoenix OTLP Export
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
