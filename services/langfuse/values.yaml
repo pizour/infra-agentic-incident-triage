@@ -16,6 +16,7 @@ langfuse:
     features:
       signUpDisabled: true
       telemetryEnabled: false
+      experimentalFeaturesEnabled: true
 
     # Headless initialization — creates org/project/user on first boot
     additionalEnv:
@@ -41,6 +42,36 @@ langfuse:
         value: "admin@internal.local"
       - name: LANGFUSE_INIT_USER_PASSWORD
         value: "adminpassword123"
+      - name: LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: langfuse-s3
+            key: root-user
+      - name: LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: langfuse-s3
+            key: root-password
+      - name: LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: langfuse-s3
+            key: root-user
+      - name: LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: langfuse-s3
+            key: root-password
+      - name: LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: langfuse-s3
+            key: root-user
+      - name: LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: langfuse-s3
+            key: root-password
 
     web:
       replicaCount: 1
@@ -52,6 +83,7 @@ langfuse:
 
     worker:
       replicaCount: 1
+      experimentalFeaturesEnabled: true
       resources:
         requests:
           cpu: 10m
