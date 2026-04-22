@@ -6,7 +6,7 @@ import asyncio
 import jwt
 import time
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from loguru import logger
@@ -17,7 +17,7 @@ from pydantic_ai.models.google import GoogleModel
 load_dotenv()
 
 # --- OpenTelemetry / Arize Phoenix Setup ---
-from opentelemetry import trace
+from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -25,6 +25,10 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.baggage.propagation import BaggagePropagator
+from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 import httpx
 
@@ -36,6 +40,12 @@ provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
 
+# Register W3C propagators so incoming traceparent headers are honoured
+propagate.set_global_textmap(CompositePropagator([
+    TraceContextTextMapPropagator(),
+    BaggagePropagator(),
+]))
+
 # Arize Phoenix OTLP Export
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 try:
@@ -45,19 +55,18 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize Phoenix exporter: {e}")
 
-# Langfuse native exporter (uses /api/public/ingestion, works with Langfuse v2+)
-# langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
-# langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-# langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-#
-# if langfuse_public_key and langfuse_secret_key:
-#     langfuse_exporter = LangfuseExporter(
-#         public_key=langfuse_public_key,
-#         secret_key=langfuse_secret_key,
-#         host=langfuse_host,
-#     )
-#     provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
-#     logger.info(f"Langfuse exporter initialized (native SDK) targeting {langfuse_host}")
+# Langfuse OTLP Export (via standard OTLP HTTP with Basic auth — no langfuse SDK dependency)
+langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
+langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+
+if langfuse_public_key and langfuse_secret_key:
+    _lf_auth = base64.b64encode(f"{langfuse_public_key}:{langfuse_secret_key}".encode()).decode()
+    _lf_endpoint = f"{langfuse_host}/api/public/otlp/v1/traces"
+    provider.add_span_processor(BatchSpanProcessor(
+        OTLPSpanExporter(endpoint=_lf_endpoint, headers={"Authorization": f"Basic {_lf_auth}"})
+    ))
+    logger.info(f"Langfuse OTLP exporter enabled → {_lf_endpoint}")
 
 provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
@@ -290,10 +299,13 @@ async def shutdown_event():
     provider.force_flush(timeout_millis=5000)
 
 @app.post("/run")
-async def run_nexus_controller(request: RunRequest):
-    logger.info(f"NEXUS CONTROLLER REQUEST: {request.input[:100]}...")
+async def run_nexus_controller(run_request: RunRequest, raw_request: Request):
+    logger.info(f"NEXUS CONTROLLER REQUEST: {run_request.input[:100]}...")
+    # Extract the traceparent from the orchestrator so all spans share one trace
+    upstream_ctx = propagate.extract(dict(raw_request.headers))
+    token = attach(upstream_ctx)
     try:
-        prompt = f"Goal: {request.input}\nContext: {request.context_summary}\nLatest Validation: {json.dumps(request.latest_validation or {})}"
+        prompt = f"Goal: {run_request.input}\nContext: {run_request.context_summary}\nLatest Validation: {json.dumps(run_request.latest_validation or {})}"
         result = await asyncio.wait_for(agent.run(prompt), timeout=180.0)
 
         # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
@@ -310,6 +322,8 @@ async def run_nexus_controller(request: RunRequest):
     except Exception as e:
         logger.error(f"Controller execution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        detach(token)
 
 @app.get("/")
 async def health_check():

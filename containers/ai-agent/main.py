@@ -22,10 +22,9 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
+from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# --- Langfuse OTLP Support ---
-from langfuse import Langfuse
 
 # Initialize TracerProvider with Service Name
 resource = Resource.create({SERVICE_NAME: "ai-agent"})
@@ -56,10 +55,6 @@ if langfuse_public_key and langfuse_secret_key:
     lf_endpoint = f"{langfuse_host}/api/public/otlp/v1/traces"
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
 
-# Configure Langfuse SpanProcessor (sending to Langfuse)
-# If env vars LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST are set, it will auto-config
-# Initialize Langfuse client (automatically registers with OTEL in v3+)
-langfuse = Langfuse()
 
 # Instrument frames and libraries
 provider.add_span_processor(OpenInferenceSpanProcessor())
@@ -327,9 +322,12 @@ async def health_check():
     return {"status": "ok", "message": "AI Agent API is running"}
 
 @app.post("/agent", response_model=AgentResponse)
-async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key)):
+async def run_agent(request: AgentRequest, raw_request: Request, api_key: str = Security(get_api_key)):
     """Standard agent endpoint for manual queries."""
     logger.info(f"RUNNING AGENT: prompt='{request.prompt[:100]}...'")
+    # Extract traceparent injected by orchestrator's HTTPXClientInstrumentor
+    upstream_ctx = propagate.extract(dict(raw_request.headers))
+    token = attach(upstream_ctx)
     try:
         if request.system_prompt:
             logger.info("Using orchestrator-provided system prompt")
@@ -351,6 +349,8 @@ async def run_agent(request: AgentRequest, api_key: str = Security(get_api_key))
     except Exception as e:
         logger.error(f"Error running agent: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        detach(token)
 
 # ---------------------------------------------
 
@@ -361,20 +361,26 @@ async def handle_webhook(request: Request, payload: dict):
     import json
     logger.info(f"WEBHOOK RECEIVED: {json.dumps(payload)[:200]}...")
 
-    with tracer.start_as_current_span("ai-agent.webhook") as span:
-        span.set_attribute("service.name", "ai-agent")
-        span.set_attribute("payload.keys", str(list(payload.keys())))
+    # Extract upstream trace context so this webhook span joins any existing trace
+    upstream_ctx = propagate.extract(dict(request.headers))
+    token = attach(upstream_ctx)
+    try:
+        with tracer.start_as_current_span("ai-agent.webhook") as span:
+            span.set_attribute("service.name", "ai-agent")
+            span.set_attribute("payload.keys", str(list(payload.keys())))
 
-        try:
-            prompt = f"Process this incoming webhook payload:\n{json.dumps(payload, indent=2)}"
-            result = await agent.run(prompt)
-            output = str(result.output)
-            logger.info(f"WEBHOOK COMPLETE: {output[:200]}...")
-            return {"status": "processed", "result": output}
-        except Exception as e:
-            logger.error(f"Webhook error: {e}")
-            span.record_exception(e)
-            return {"status": "error", "message": str(e)}
+            try:
+                prompt = f"Process this incoming webhook payload:\n{json.dumps(payload, indent=2)}"
+                result = await agent.run(prompt)
+                output = str(result.output)
+                logger.info(f"WEBHOOK COMPLETE: {output[:200]}...")
+                return {"status": "processed", "result": output}
+            except Exception as e:
+                logger.error(f"Webhook error: {e}")
+                span.record_exception(e)
+                return {"status": "error", "message": str(e)}
+    finally:
+        detach(token)
 
 if __name__ == "__main__":
     import uvicorn
