@@ -32,4 +32,4 @@ applications:
     namespace: ai-agent
   - name: langfuse
     path: services/langfuse
-    namespace: ai-agent
+    namespace: langfuse

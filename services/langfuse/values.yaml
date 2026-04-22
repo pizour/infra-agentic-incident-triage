@@ -42,7 +42,21 @@ langfuse:
       - name: LANGFUSE_INIT_USER_PASSWORD
         value: "adminpassword123"
       - name: NEXTAUTH_URL
-        value: "http://langfuse-web.ai-agent.svc.cluster.local:3000"
+        value: "http://langfuse-web.langfuse.svc.cluster.local:3000"
+
+    web:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+        limits: {}
+
+    worker:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+        limits: {}
 
   # PostgreSQL (Bitnami sub-chart)
   postgresql:
@@ -55,12 +69,32 @@ langfuse:
       persistence:
         size: 5Gi
         storageClass: "standard"
+      resourcesPreset: "none"
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+        limits: {}
 
   # Redis (Bitnami sub-chart)
   redis:
     deploy: true
     auth:
       enabled: false
+    master:
+      resourcesPreset: "none"
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+        limits: {}
+    replica:
+      resourcesPreset: "none"
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+        limits: {}
 
   # ClickHouse (sub-chart)
   clickhouse:
@@ -71,6 +105,11 @@ langfuse:
     persistence:
       size: 10Gi
       storageClass: "standard"
+    resources:
+      requests:
+        cpu: 10m
+        memory: 128Mi
+      limits: {}
 
   # MinIO as S3 blob store (built-in, optional but required for event persistence)
   minio:
@@ -81,3 +120,8 @@ langfuse:
     persistence:
       size: 10Gi
       storageClass: "standard"
+    resources:
+      requests:
+        cpu: 10m
+        memory: 128Mi
+      limits: {}
