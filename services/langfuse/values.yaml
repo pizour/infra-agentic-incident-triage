@@ -45,6 +45,7 @@ langfuse:
         value: "http://langfuse-web.langfuse.svc.cluster.local:3000"
 
     web:
+      replicaCount: 1
       resources:
         requests:
           cpu: 10m
@@ -52,6 +53,7 @@ langfuse:
         limits: {}
 
     worker:
+      replicaCount: 1
       resources:
         requests:
           cpu: 10m
@@ -99,6 +101,10 @@ langfuse:
   # ClickHouse (sub-chart)
   clickhouse:
     deploy: true
+    shards: 1
+    replicaCount: 1
+    zookeeper:
+      replicaCount: 1
     auth:
       username: clickhouse
       password: "clickhousepassword"
