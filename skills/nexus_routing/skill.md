@@ -30,8 +30,10 @@ Apply the following rules strictly in order:
    - IF `safety_check` is `False`, IMMEDIATELY output `finish` and do not proceed. Add reasoning that execution was halted for safety.
 
 3. **Quality Thresholds**:
-   - IF `accuracy` < 0.8 OR `correctness` < 0.8 OR `completeness` < 0.8, output `retry`.
-   - Provide feedback in your output instructing the previous agent on what needs improvement based on their `reasoning`.
+   - IF `accuracy` < 0.8 OR `correctness` < 0.8 OR `completeness` < 0.8:
+     - Check `validation_history` to see if this agent has already been retried once.
+     - IF there is already 1 failed attempt for the current agent, output `finish` and do not proceed further. Do NOT get stuck in a retry loop.
+     - IF this is the first failure for the current agent, output `retry` and provide feedback instructing them on what needs improvement based on their `reasoning`.
 
 4. **Success / Next Agent**:
    - IF all metrics pass (scores >= 0.8 and safety is True) AND further action is required, output `next_agent` with a **single** `target_agent` — the immediate next step only.
