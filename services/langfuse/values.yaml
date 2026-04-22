@@ -7,7 +7,7 @@ langfuse:
     nextauth:
       secret:
         value: "my-nextauth-secret-replace-in-production"
-      url: "http://langfuse-web.ai-agent.svc.cluster.local:3000"
+      url: "http://langfuse-web.langfuse.svc.cluster.local:3000"
     salt:
       value: "my-salt-replace-in-production"
     encryptionKey:
@@ -41,8 +41,6 @@ langfuse:
         value: "admin@internal.local"
       - name: LANGFUSE_INIT_USER_PASSWORD
         value: "adminpassword123"
-      - name: NEXTAUTH_URL
-        value: "http://langfuse-web.langfuse.svc.cluster.local:3000"
 
     web:
       replicaCount: 1
