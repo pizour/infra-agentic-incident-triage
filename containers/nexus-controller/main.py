@@ -19,7 +19,7 @@ load_dotenv()
 # --- OpenTelemetry / Arize Phoenix Setup ---
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -32,11 +32,12 @@ from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 import httpx
 
-from langfuse.opentelemetry import LangfuseSpanProcessor
+ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT", "dev")
 
 resource = Resource.create({
     SERVICE_NAME: "nexus-controller",
     "openinference.project.name": "ai-agent-triage",
+    "deployment.environment": ENVIRONMENT,
 })
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
@@ -57,9 +58,23 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize Phoenix exporter: {e}")
 
-# Langfuse via SDK SpanProcessor (auto-filters to LLM spans only)
-provider.add_span_processor(LangfuseSpanProcessor())
-logger.info("Langfuse SpanProcessor enabled")
+# Langfuse OTLP Export (via BatchSpanProcessor — non-blocking)
+langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
+langfuse_pk = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+langfuse_sk = os.getenv("LANGFUSE_SECRET_KEY", "")
+if langfuse_pk and langfuse_sk:
+    langfuse_auth = base64.b64encode(f"{langfuse_pk}:{langfuse_sk}".encode()).decode()
+    langfuse_exporter = OTLPSpanExporter(
+        endpoint=f"{langfuse_host}/api/public/otel/v1/traces",
+        headers={
+            "Authorization": f"Basic {langfuse_auth}",
+            "x-langfuse-ingestion-version": "4",
+        },
+    )
+    provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
+    logger.info(f"Langfuse OTLP exporter initialized: {langfuse_host}")
+else:
+    logger.warning("Langfuse credentials not set — OTLP export disabled")
 
 HTTPXClientInstrumentor().instrument()
 
@@ -409,26 +424,38 @@ async def run_nexus_controller(run_request: RunRequest, raw_request: Request):
     upstream_ctx = propagate.extract(dict(raw_request.headers))
     token = attach(upstream_ctx)
     try:
-        prompt = f"Goal: {run_request.input}\nContext: {run_request.context_summary}\nLatest Validation: {json.dumps(run_request.latest_validation or {})}"
-        result = await asyncio.wait_for(
-            agent.run(prompt),
-            timeout=180.0,
-        )
+        latest_agent = (run_request.latest_validation or {}).get("agent_key", "none")
+        with tracer.start_as_current_span("nexus-controller.routing") as span:
+            span.set_attribute("langfuse.observation.type", "span")
+            span.set_attribute("langfuse.observation.input", json.dumps({
+                "goal": run_request.input[:300],
+                "latest_agent": latest_agent,
+            }))
+            span.set_attribute("langfuse.observation.metadata.latest_agent", latest_agent)
+            try:
+                prompt = f"Goal: {run_request.input}\nContext: {run_request.context_summary}\nLatest Validation: {json.dumps(run_request.latest_validation or {})}"
+                result = await asyncio.wait_for(
+                    agent.run(prompt),
+                    timeout=180.0,
+                )
 
-        # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
-        decision = getattr(result, "output", getattr(result, "data", None))
-        if decision is None:
-            raise AttributeError(f"AgentRunResult has neither 'output' nor 'data': {dir(result)}")
+                decision = getattr(result, "output", getattr(result, "data", None))
+                if decision is None:
+                    raise AttributeError(f"AgentRunResult has neither 'output' nor 'data': {dir(result)}")
 
-        logger.info(f"ROUTING DECISION COMPLETE: {decision.action}")
-        return decision.model_dump()
-
-    except asyncio.TimeoutError:
-        logger.error("NEXUS CONTROLLER: agent.run exceeded 80s timeout, returning finish")
-        return NexusRoutingDecision(action="finish", feedback="Routing decision timed out", target_agent=None).model_dump()
-    except Exception as e:
-        logger.error(f"Controller execution failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+                span.set_attribute("langfuse.observation.output", json.dumps(decision.model_dump()))
+                logger.info(f"ROUTING DECISION COMPLETE: {decision.action}")
+                return decision.model_dump()
+            except asyncio.TimeoutError:
+                span.set_attribute("langfuse.observation.level", "ERROR")
+                span.set_attribute("langfuse.observation.status_message", "Routing timed out")
+                logger.error("NEXUS CONTROLLER: agent.run exceeded 180s timeout, returning finish")
+                return NexusRoutingDecision(action="finish", feedback="Routing decision timed out", target_agent=None).model_dump()
+            except Exception as e:
+                span.record_exception(e)
+                span.set_attribute("langfuse.observation.level", "ERROR")
+                logger.error(f"Controller execution failed: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
     finally:
         detach(token)
 

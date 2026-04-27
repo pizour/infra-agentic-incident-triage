@@ -14,4 +14,3 @@ opentelemetry-instrumentation-httpx
 prometheus_fastapi_instrumentator
 slowapi
 mcp
-langfuse[otel]

@@ -13,7 +13,7 @@ load_dotenv()
 # --- OpenTelemetry / Arize Phoenix Setup ---
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -26,12 +26,13 @@ from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 
 
-from langfuse.opentelemetry import LangfuseSpanProcessor
+ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT", "dev")
 
 # Initialize TracerProvider with Service Name
 resource = Resource.create({
     SERVICE_NAME: "ai-agent",
     "openinference.project.name": "ai-agent-triage",
+    "deployment.environment": ENVIRONMENT,
 })
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
@@ -51,8 +52,22 @@ try:
 except Exception as e:
     pass  # Will log after logger is imported
 
-# Langfuse via SDK SpanProcessor (auto-filters to LLM spans only)
-provider.add_span_processor(LangfuseSpanProcessor())
+# Langfuse OTLP Export (via BatchSpanProcessor — non-blocking)
+langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
+langfuse_pk = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+langfuse_sk = os.getenv("LANGFUSE_SECRET_KEY", "")
+if langfuse_pk and langfuse_sk:
+    langfuse_auth = base64.b64encode(f"{langfuse_pk}:{langfuse_sk}".encode()).decode()
+    langfuse_exporter = OTLPSpanExporter(
+        endpoint=f"{langfuse_host}/api/public/otel/v1/traces",
+        headers={
+            "Authorization": f"Basic {langfuse_auth}",
+            "x-langfuse-ingestion-version": "4",
+        },
+    )
+    provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
+else:
+    pass  # Will log after logger is imported
 
 HTTPXClientInstrumentor().instrument()
 # ---------------------------------------------
@@ -325,21 +340,27 @@ async def run_agent(request: AgentRequest, raw_request: Request, api_key: str = 
     upstream_ctx = propagate.extract(dict(raw_request.headers))
     token = attach(upstream_ctx)
     try:
-        if request.system_prompt:
-            logger.info("Using orchestrator-provided system prompt")
-            effective_prompt = f"<system_prompt>{request.system_prompt}</system_prompt>\n\n{request.prompt}"
-        else:
-            effective_prompt = request.prompt
+        with tracer.start_as_current_span("ai-agent.run") as span:
+            span.set_attribute("langfuse.observation.type", "generation")
+            span.set_attribute("langfuse.observation.input", request.prompt[:2000])
+            if request.system_prompt:
+                span.set_attribute("langfuse.observation.metadata.has_system_prompt", "true")
+                logger.info("Using orchestrator-provided system prompt")
+                effective_prompt = f"<system_prompt>{request.system_prompt}</system_prompt>\n\n{request.prompt}"
+            else:
+                effective_prompt = request.prompt
 
-        result = await agent.run(effective_prompt)
+            result = await agent.run(effective_prompt)
 
-        # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
-        output = getattr(result, "output", getattr(result, "data", None))
-        if output is None:
-            raise AttributeError(f"AgentRunResult has neither 'output' nor 'data': {dir(result)}")
+            # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
+            output = getattr(result, "output", getattr(result, "data", None))
+            if output is None:
+                raise AttributeError(f"AgentRunResult has neither 'output' nor 'data': {dir(result)}")
 
-        logger.info(f"AGENT RUN COMPLETE: {str(output)[:200]}...")
-        return AgentResponse(result=str(output))
+            span.set_attribute("langfuse.observation.output", str(output)[:2000])
+            span.set_attribute("langfuse.observation.model.name", os.getenv("LLM_MODEL", "gemini-2.5-flash"))
+            logger.info(f"AGENT RUN COMPLETE: {str(output)[:200]}...")
+            return AgentResponse(result=str(output))
     except HTTPException:
         raise
     except Exception as e:

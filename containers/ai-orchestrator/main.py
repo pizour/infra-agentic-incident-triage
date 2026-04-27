@@ -28,7 +28,7 @@ load_dotenv()
 # ── OpenTelemetry ─────────────────────────────────────────────────────────────
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -39,11 +39,12 @@ from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 from openinference.instrumentation.langchain import LangChainInstrumentor
-from langfuse.opentelemetry import LangfuseSpanProcessor
+ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT", "dev")
 
 resource = Resource.create({
     SERVICE_NAME: "ai-orchestrator",
     "openinference.project.name": "ai-agent-triage",
+    "deployment.environment": ENVIRONMENT,
 })
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
@@ -64,9 +65,23 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize Phoenix exporter: {e}")
 
-# Langfuse via SDK SpanProcessor (auto-filters to LLM spans only)
-provider.add_span_processor(LangfuseSpanProcessor())
-logger.info("Langfuse SpanProcessor enabled")
+# Langfuse OTLP Export (via BatchSpanProcessor — non-blocking)
+langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
+langfuse_pk = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+langfuse_sk = os.getenv("LANGFUSE_SECRET_KEY", "")
+if langfuse_pk and langfuse_sk:
+    langfuse_auth = base64.b64encode(f"{langfuse_pk}:{langfuse_sk}".encode()).decode()
+    langfuse_exporter = OTLPSpanExporter(
+        endpoint=f"{langfuse_host}/api/public/otel/v1/traces",
+        headers={
+            "Authorization": f"Basic {langfuse_auth}",
+            "x-langfuse-ingestion-version": "4",
+        },
+    )
+    provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
+    logger.info(f"Langfuse OTLP exporter initialized: {langfuse_host}")
+else:
+    logger.warning("Langfuse credentials not set — OTLP export disabled")
 
 HTTPXClientInstrumentor().instrument()
 # ─────────────────────────────────────────────────────────────────────────────
@@ -259,6 +274,9 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
 async def node_nexus_controller(state: CompleteState) -> dict:
     logger.info("NODE: nexus_controller - evaluating state")
     with tracer.start_as_current_span("ai-orchestrator.node.nexus_controller") as span:
+        span.set_attribute("langfuse.observation.type", "span")
+        latest = state.get("latest_validation")
+        span.set_attribute("langfuse.observation.input", json.dumps({"latest_agent": latest.get("agent_key") if latest else None}))
         payload = {
             "input": state["input"],
             "context_summary": str(state.get("context", {})),
@@ -282,6 +300,7 @@ async def node_nexus_controller(state: CompleteState) -> dict:
                     return {"next_action": "finish"}
 
                 agent_env_vars = data.get("agent_env_vars") or {}
+                span.set_attribute("langfuse.observation.output", json.dumps({"action": action, "target": target_agent}))
                 logger.info(f"CONTROLLER DECISION: action={action}, target={target_agent}")
                 return {"next_action": action, "next_agent": target_agent, "next_instructions": feedback, "agent_env_vars": agent_env_vars}
             except httpx.TimeoutException as e:
@@ -321,6 +340,9 @@ async def node_executor(state: CompleteState) -> dict:
 
     logger.info(f"NODE: executor - forwarding to agent={agent_id} (attempt {current_retry}/3)")
     with tracer.start_as_current_span(f"ai-orchestrator.node.execute.{agent_id}") as span:
+        span.set_attribute("langfuse.observation.type", "span")
+        span.set_attribute("langfuse.observation.metadata.agent_id", str(agent_id))
+        span.set_attribute("langfuse.observation.metadata.attempt", str(current_retry))
         span.set_attribute("agent_id", str(agent_id))
         span.set_attribute("attempt", current_retry)
         prompt = str(state.get("next_instructions") or state["input"])
@@ -426,10 +448,19 @@ async def run_task(task_request: TaskRequest, raw_request: Request):
         "agent_env_vars": None,
         "spawned_pods": [],
     }
+    session_id = f"task-{int(time.time())}"
     try:
         with tracer.start_as_current_span("ai-orchestrator.task.execution") as span:
+            # Langfuse trace attributes for grouping, filtering, and dashboard views
+            span.set_attribute("langfuse.trace.name", "task-execution")
+            span.set_attribute("langfuse.session.id", session_id)
+            span.set_attribute("langfuse.trace.tags", json.dumps(["task", "manual"]))
+            span.set_attribute("langfuse.trace.input", task_request.input[:500])
+            span.set_attribute("langfuse.trace.metadata.source", "api")
+            span.set_attribute("langfuse.trace.metadata.environment", ENVIRONMENT)
             try:
                 final = await workflow.ainvoke(initial_state)
+                span.set_attribute("langfuse.trace.output", json.dumps(final.get("results", {}))[:1000])
                 logger.info("TASK COMPLETED SUCCESSFULLY")
                 return {
                     "status": "completed",
@@ -474,10 +505,27 @@ async def handle_alert(request: Request, payload: dict):
         "spawned_pods": [],
     }
 
+    # Extract alert metadata for Langfuse trace enrichment
+    first_alert = alerts[0] if alerts else {}
+    alert_name = first_alert.get("labels", {}).get("alertname", "unknown")
+    severity = first_alert.get("labels", {}).get("severity", "unknown")
+    session_id = f"alert-{alert_name}-{int(time.time())}"
+
     try:
         with tracer.start_as_current_span("ai-orchestrator.alert.orchestration") as span:
+            # Langfuse trace attributes for grouping, filtering, and dashboard views
+            span.set_attribute("langfuse.trace.name", f"alert-{alert_name}")
+            span.set_attribute("langfuse.session.id", session_id)
+            span.set_attribute("langfuse.trace.tags", json.dumps(["alert", "grafana", severity]))
+            span.set_attribute("langfuse.trace.input", json.dumps(payload)[:2000])
+            span.set_attribute("langfuse.trace.metadata.source", "grafana")
+            span.set_attribute("langfuse.trace.metadata.alert_name", alert_name)
+            span.set_attribute("langfuse.trace.metadata.severity", severity)
+            span.set_attribute("langfuse.trace.metadata.alert_count", str(len(alerts)))
+            span.set_attribute("langfuse.trace.metadata.environment", ENVIRONMENT)
             try:
                 final = await workflow.ainvoke(initial_state)
+                span.set_attribute("langfuse.trace.output", json.dumps(final.get("results", {}))[:1000])
                 logger.info("ALERT ORCHESTRATION COMPLETED")
                 return {"status": "completed", "results": final.get("results", {})}
             except Exception as e:
