@@ -5,7 +5,7 @@ import base64
 import asyncio
 import jwt
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -143,17 +143,21 @@ async def _fetch_file_from_github(path: str) -> str:
             if line.startswith("data: "):
                 data = json.loads(line[6:])
                 if "result" in data:
-                    # MCP returns base64-encoded content inside result.content[].text
-                    result = data["result"]
-                    content_blocks = result.get("content", [])
+                    content_blocks = data["result"].get("content", [])
+                    # Prefer resource blocks — they contain the actual file text
+                    for block in content_blocks:
+                        if block.get("type") == "resource":
+                            return block.get("resource", {}).get("text", "")
+                    # Fallback: text block with base64-encoded content (older MCP versions)
                     for block in content_blocks:
                         text = block.get("text", "")
                         try:
                             inner = json.loads(text)
                             raw = inner.get("content", "")
-                            return base64.b64decode(raw).decode("utf-8")
+                            if raw:
+                                return base64.b64decode(raw).decode("utf-8")
                         except Exception:
-                            return text
+                            pass
     return ""
 
 
@@ -183,12 +187,14 @@ class AgentValidationResult(BaseModel):
     data: Optional[dict] = None
 
 class NexusRoutingDecision(BaseModel):
-    action: str
+    action: Literal["next_agent", "retry", "finish"]
     feedback: str
     target_agent: Optional[str] = None
     agent_env_vars: Optional[dict] = None  # env_vars from agent .md frontmatter (e.g. SYSTEM_PROMPT)
 
 BASE_ROUTER_SYSTEM_PROMPT = """You are the Nexus Controller. Evaluate the incoming validation state and produce a NexusRoutingDecision.
+
+The `action` field MUST be exactly one of: "next_agent", "retry", "finish". No other values are valid.
 
 ## Registries (pre-loaded — do NOT use the github tool to discover agents or skills)
 
@@ -201,31 +207,31 @@ Only use the github tool to read a specific agent or skill file AFTER you have s
 
 ## agent_env_vars
 
-When routing to a next_agent, you MUST include the full env_vars block from that agent's .md file.
-Use the github tool to read the specific agent .md file (e.g. agents/specialists/vm-tshooter.md) ONLY when you have already decided on a target_agent.
+When action is "next_agent", you MUST include the full env_vars block from that agent's .md file.
+Use the github tool to read the specific agent .md file (e.g. agents/specialists/vm-tshooter.md) ONLY after you have decided on a target_agent.
 Copy the YAML env_vars block as a dict into agent_env_vars. If no env_vars exist, set null.
 
 ## Routing Rules (apply in order)
 
 1. First request (latest_validation is null OR validation_history empty):
-   - Skip quality checks. Route directly to the appropriate investigation agent based on alert context.
-   - For grafana source + VM/Linux alerts → vm_tshooter
-   - For grafana source + Kubernetes/GKE alerts → k8s_tshooter
+   - Skip quality checks. Set action="next_agent" with the appropriate investigation agent.
+   - VM/Linux alerts → target_agent="vm_tshooter"
+   - Kubernetes/GKE alerts → target_agent="k8s_tshooter"
 
-2. Safety: if safety_check is False → action=finish immediately.
+2. Safety: if safety_check is False → action="finish" immediately.
 
 3. Quality thresholds (subsequent requests only):
-   - If accuracy < 0.8 OR correctness < 0.8 OR completeness < 0.8 → action=retry (max once per agent).
-   - If agent has already been retried once → action=finish.
+   - If accuracy < 0.8 OR correctness < 0.8 OR completeness < 0.8 → action="retry" (max once per agent).
+   - If agent has already been retried once → action="finish".
 
 4. Pipeline progression (grafana source):
-   After vm_tshooter or k8s_tshooter → route to create_ticket
-   After create_ticket → action=finish
+   - After vm_tshooter or k8s_tshooter completes → action="next_agent", target_agent="create_ticket"
+   - After create_ticket completes → action="finish"
 
-5. Finish: user/api source with passing scores → action=finish with summary in feedback.
+5. Non-grafana source with passing scores → action="finish" with summary in feedback.
 
 ## Error handling
-If the github tool fails with 'failed after 3 attempts', return action=finish, feedback='Tool failures prevent routing decision', target_agent=None.
+If the github tool fails with 'failed after 3 attempts', set action="finish", feedback="Tool failures prevent routing decision", target_agent=null.
 """
 
 def build_system_prompt() -> str:
