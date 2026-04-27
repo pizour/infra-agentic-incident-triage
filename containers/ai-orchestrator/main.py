@@ -28,7 +28,7 @@ load_dotenv()
 # ── OpenTelemetry ─────────────────────────────────────────────────────────────
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -39,9 +39,12 @@ from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 from openinference.instrumentation.langchain import LangChainInstrumentor
-# from langfuse.opentelemetry import LangfuseExporter
+from langfuse.opentelemetry import LangfuseSpanProcessor
 
-resource = Resource.create({SERVICE_NAME: "ai-orchestrator"})
+resource = Resource.create({
+    SERVICE_NAME: "ai-orchestrator",
+    "openinference.project.name": "ai-agent-triage",
+})
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
@@ -49,7 +52,10 @@ tracer = trace.get_tracer(__name__)
 # W3C TraceContext propagator — enables traceparent header injection into outgoing httpx calls
 propagate.set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()]))
 
-# Arize Phoenix OTLP Export
+# Instrument LangChain/LangGraph FIRST — adds OpenInference attributes before export
+LangChainInstrumentor().instrument()
+
+# Arize Phoenix OTLP Export (all spans)
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 try:
     phoenix_exporter = OTLPSpanExporter(endpoint=endpoint)
@@ -58,21 +64,9 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize Phoenix exporter: {e}")
 
-# Langfuse OTLP Export (via standard OTLP HTTP with Basic auth — no langfuse SDK dependency)
-langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
-langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-
-if langfuse_public_key and langfuse_secret_key:
-    _lf_auth = base64.b64encode(f"{langfuse_public_key}:{langfuse_secret_key}".encode()).decode()
-    _lf_endpoint = f"{langfuse_host}/api/public/otel/v1/traces"
-    provider.add_span_processor(BatchSpanProcessor(
-        OTLPSpanExporter(endpoint=_lf_endpoint, headers={"Authorization": f"Basic {_lf_auth}"})
-    ))
-    logger.info(f"Langfuse OTLP exporter enabled → {_lf_endpoint}")
-
-# Instrument LangChain (which includes LangGraph)
-LangChainInstrumentor().instrument()
+# Langfuse via SDK SpanProcessor (auto-filters to LLM spans only)
+provider.add_span_processor(LangfuseSpanProcessor())
+logger.info("Langfuse SpanProcessor enabled")
 
 HTTPXClientInstrumentor().instrument()
 # ─────────────────────────────────────────────────────────────────────────────

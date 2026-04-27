@@ -13,7 +13,7 @@ load_dotenv()
 # --- OpenTelemetry / Arize Phoenix Setup ---
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -26,8 +26,13 @@ from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 
 
+from langfuse.opentelemetry import LangfuseSpanProcessor
+
 # Initialize TracerProvider with Service Name
-resource = Resource.create({SERVICE_NAME: "ai-agent"})
+resource = Resource.create({
+    SERVICE_NAME: "ai-agent",
+    "openinference.project.name": "ai-agent-triage",
+})
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
@@ -35,7 +40,10 @@ tracer = trace.get_tracer(__name__)
 # W3C TraceContext propagator — extracts traceparent from incoming requests to join parent trace
 propagate.set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()]))
 
-# Configure OTLP Exporter (sending to Phoenix)
+# OpenInference enrichment FIRST — must run before exporters so spans have LLM attributes
+provider.add_span_processor(OpenInferenceSpanProcessor())
+
+# Arize Phoenix OTLP Export (all spans)
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 try:
     exporter = OTLPSpanExporter(endpoint=endpoint)
@@ -43,21 +51,9 @@ try:
 except Exception as e:
     pass  # Will log after logger is imported
 
-# Langfuse OTLP Export
-langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
-langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+# Langfuse via SDK SpanProcessor (auto-filters to LLM spans only)
+provider.add_span_processor(LangfuseSpanProcessor())
 
-if langfuse_public_key and langfuse_secret_key:
-    auth_str = f"{langfuse_public_key}:{langfuse_secret_key}"
-    encoded_auth = base64.b64encode(auth_str.encode()).decode()
-    lf_headers = {"Authorization": f"Basic {encoded_auth}"}
-    lf_endpoint = f"{langfuse_host}/api/public/otel/v1/traces"
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
-
-
-# Instrument frames and libraries
-provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
 # ---------------------------------------------
 

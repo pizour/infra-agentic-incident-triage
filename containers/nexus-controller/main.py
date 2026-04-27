@@ -19,7 +19,7 @@ load_dotenv()
 # --- OpenTelemetry / Arize Phoenix Setup ---
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -32,10 +32,12 @@ from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 import httpx
 
-# from langfuse import Langfuse
-# from langfuse.opentelemetry import LangfuseExporter
+from langfuse.opentelemetry import LangfuseSpanProcessor
 
-resource = Resource.create({SERVICE_NAME: "nexus-controller"})
+resource = Resource.create({
+    SERVICE_NAME: "nexus-controller",
+    "openinference.project.name": "ai-agent-triage",
+})
 provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
@@ -43,7 +45,10 @@ tracer = trace.get_tracer(__name__)
 # Register W3C propagators so incoming traceparent headers are honoured
 propagate.set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()]))
 
-# Arize Phoenix OTLP Export
+# OpenInference enrichment FIRST — must run before exporters so spans have LLM attributes
+provider.add_span_processor(OpenInferenceSpanProcessor())
+
+# Arize Phoenix OTLP Export (all spans)
 endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
 try:
     phoenix_exporter = OTLPSpanExporter(endpoint=endpoint)
@@ -52,20 +57,10 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize Phoenix exporter: {e}")
 
-# Langfuse OTLP Export (via standard OTLP HTTP with Basic auth — no langfuse SDK dependency)
-langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
-langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+# Langfuse via SDK SpanProcessor (auto-filters to LLM spans only)
+provider.add_span_processor(LangfuseSpanProcessor())
+logger.info("Langfuse SpanProcessor enabled")
 
-if langfuse_public_key and langfuse_secret_key:
-    _lf_auth = base64.b64encode(f"{langfuse_public_key}:{langfuse_secret_key}".encode()).decode()
-    _lf_endpoint = f"{langfuse_host}/api/public/otel/v1/traces"
-    provider.add_span_processor(BatchSpanProcessor(
-        OTLPSpanExporter(endpoint=_lf_endpoint, headers={"Authorization": f"Basic {_lf_auth}"})
-    ))
-    logger.info(f"Langfuse OTLP exporter enabled → {_lf_endpoint}")
-
-provider.add_span_processor(OpenInferenceSpanProcessor())
 HTTPXClientInstrumentor().instrument()
 
 # --- Configuration ---
@@ -211,24 +206,30 @@ When action is "next_agent", you MUST include the full env_vars block from that 
 Use the github tool to read the specific agent .md file (e.g. agents/specialists/vm-tshooter.md) ONLY after you have decided on a target_agent.
 Copy the YAML env_vars block as a dict into agent_env_vars. If no env_vars exist, set null.
 
+## Understanding latest_validation
+
+The `latest_validation` field contains `agent_key` (which agent ran) and `raw` (the agent's full text output).
+The `raw` field may contain a JSON object with `accuracy`, `correctness`, `completeness`, `safety_check` fields
+as defined by the agent output contract. Parse these from the raw text if present.
+
 ## Routing Rules (apply in order)
 
-1. First request (latest_validation is null OR validation_history empty):
-   - Skip quality checks. Set action="next_agent" with the appropriate investigation agent.
+1. First request (latest_validation is null or empty):
+   - Set action="next_agent" with the appropriate investigation agent.
    - VM/Linux alerts → target_agent="vm_tshooter"
    - Kubernetes/GKE alerts → target_agent="k8s_tshooter"
 
-2. Safety: if safety_check is False → action="finish" immediately.
+2. Safety: if safety_check is explicitly False in the parsed output → action="finish".
 
-3. Quality thresholds (subsequent requests only):
-   - If accuracy < 0.8 OR correctness < 0.8 OR completeness < 0.8 → action="retry" (max once per agent).
-   - If agent has already been retried once → action="finish".
+3. Grafana pipeline (context contains source=grafana):
+   Apply this fixed sequence — always advance to the next step when the current step completes:
+   - If latest agent_key is "vm_tshooter" or "k8s_tshooter" → action="next_agent", target_agent="create_ticket"
+   - If latest agent_key is "create_ticket" → action="finish"
+   Only action="retry" if the output is clearly an error or empty (max once per agent).
 
-4. Pipeline progression (grafana source):
-   - After vm_tshooter or k8s_tshooter completes → action="next_agent", target_agent="create_ticket"
-   - After create_ticket completes → action="finish"
-
-5. Non-grafana source with passing scores → action="finish" with summary in feedback.
+4. Non-grafana source:
+   - If quality scores are present and all >= 0.8 → action="finish" with summary.
+   - If scores are low → action="retry" (max once), then action="finish".
 
 ## Error handling
 If the github tool fails with 'failed after 3 attempts', set action="finish", feedback="Tool failures prevent routing decision", target_agent=null.

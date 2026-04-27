@@ -24,6 +24,7 @@ env:
   SKILLS_DIR: "/app/skills"
   MODEL_NAME: "gemini-2.5-flash"
   GITHUB_MCP_URL: "http://github-mcp-server.ai-agent.svc.cluster.local:8080/mcp"
+  GITHUB_REPO: "pizour/infra-agentic-incident-triage"
   GOOGLE_CLOUD_PROJECT: "ai-incident-triage"
   GOOGLE_CLOUD_REGION: "europe-west4"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
