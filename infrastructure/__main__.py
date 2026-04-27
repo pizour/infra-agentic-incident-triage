@@ -115,19 +115,19 @@ def main():
     )
     
     # 8. Create Testing VM
-    # pulumi.info("Creating testing VM...")
-    # vm_resources = create_testing_vm(
-    #     project_id=config.gcp_project,
-    #     region=config.gcp_region,
-    #     zone=config.gke_zone,
-    #     network_id=network_resources['network'].id,
-    #     subnet_id=network_resources['subnet'].id,
-    #     labels=config.labels,
-    #     username=os.environ.get('VM_USERNAME'),
-    #     password=os.environ.get('VM_PASSWORD'),
-    #     pods_cidr=config.pods_cidr,
-    #     loki_url='http://10.0.15.200:3100/loki/api/v1/push',
-    # )
+    pulumi.info("Creating testing VM...")
+    vm_resources = create_testing_vm(
+        project_id=config.gcp_project,
+        region=config.gcp_region,
+        zone=config.gke_zone,
+        network_id=network_resources['network'].id,
+        subnet_id=network_resources['subnet'].id,
+        labels=config.labels,
+        username=os.environ.get('VM_USERNAME'),
+        password=os.environ.get('VM_PASSWORD'),
+        pods_cidr=config.pods_cidr,
+        loki_url='http://10.0.15.200:3100/loki/api/v1/push',
+    )
     
     # Stack Outputs
     pulumi.export('cluster_name', cluster_resources['cluster_name'])
@@ -137,8 +137,8 @@ def main():
     pulumi.export('artifact_registry_url', artifact_registry_resources['repository_url'])
     # pulumi.export('gateway_ip_address', public_ip_resources['ip_address'])
     pulumi.export('argocd_namespace', argocd_resources['namespace'])
-    # pulumi.export('testing_vm_public_ip', vm_resources['public_ip'])
-    # pulumi.export('testing_vm_internal_ip', vm_resources['internal_ip'])
+    pulumi.export('testing_vm_public_ip', vm_resources['public_ip'])
+    pulumi.export('testing_vm_internal_ip', vm_resources['internal_ip'])
     
     # Export kubeconfig connection details
     pulumi.export('kubeconfig', pulumi.Output.concat(
@@ -157,7 +157,7 @@ def main():
         'artifact_registry': artifact_registry_resources,
         # 'public_ip': public_ip_resources,
         'argocd': argocd_resources,
-        # 'vm': vm_resources,
+        'vm': vm_resources,
     }
 
 if __name__ == '__main__':
