@@ -19,7 +19,7 @@ load_dotenv()
 # --- OpenTelemetry / Arize Phoenix Setup ---
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -60,7 +60,7 @@ langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
 if langfuse_public_key and langfuse_secret_key:
     _lf_auth = base64.b64encode(f"{langfuse_public_key}:{langfuse_secret_key}".encode()).decode()
     _lf_endpoint = f"{langfuse_host}/api/public/otel/v1/traces"
-    provider.add_span_processor(SimpleSpanProcessor(
+    provider.add_span_processor(BatchSpanProcessor(
         OTLPSpanExporter(endpoint=_lf_endpoint, headers={"Authorization": f"Basic {_lf_auth}"})
     ))
     logger.info(f"Langfuse OTLP exporter enabled → {_lf_endpoint}")
@@ -242,6 +242,11 @@ agent = Agent(
     instrument=True,
 )
 
+@agent.system_prompt
+def dynamic_system_prompt() -> str:
+    """Returns the system prompt with registry content injected at call time."""
+    return build_system_prompt()
+
 @agent.tool
 async def github(
     ctx: RunContext[None],
@@ -399,7 +404,7 @@ async def run_nexus_controller(run_request: RunRequest, raw_request: Request):
     try:
         prompt = f"Goal: {run_request.input}\nContext: {run_request.context_summary}\nLatest Validation: {json.dumps(run_request.latest_validation or {})}"
         result = await asyncio.wait_for(
-            agent.run(prompt, system_prompt=build_system_prompt()),
+            agent.run(prompt),
             timeout=180.0,
         )
 

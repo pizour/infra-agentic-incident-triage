@@ -28,7 +28,7 @@ load_dotenv()
 # ── OpenTelemetry ─────────────────────────────────────────────────────────────
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -66,7 +66,7 @@ langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
 if langfuse_public_key and langfuse_secret_key:
     _lf_auth = base64.b64encode(f"{langfuse_public_key}:{langfuse_secret_key}".encode()).decode()
     _lf_endpoint = f"{langfuse_host}/api/public/otel/v1/traces"
-    provider.add_span_processor(SimpleSpanProcessor(
+    provider.add_span_processor(BatchSpanProcessor(
         OTLPSpanExporter(endpoint=_lf_endpoint, headers={"Authorization": f"Basic {_lf_auth}"})
     ))
     logger.info(f"Langfuse OTLP exporter enabled → {_lf_endpoint}")
@@ -276,9 +276,17 @@ async def node_nexus_controller(state: CompleteState) -> dict:
                 response = await client.post(ROUTER_API, json=payload)
                 response.raise_for_status()
                 data = response.json()
-                action = data.get("action", "finish")
+                action = data.get("action", "finish").lower()
                 target_agent = data.get("target_agent")
                 feedback = data.get("feedback", "")
+
+                if action not in ["next_agent", "retry", "finish"]:
+                    logger.warning(f"Unknown action from controller: {action}. Finishing.")
+                    return {"next_action": "finish"}
+                if "failed after 3 attempts" in feedback.lower():
+                    logger.warning(f"Tool failure detected in feedback. Finishing.")
+                    return {"next_action": "finish"}
+
                 agent_env_vars = data.get("agent_env_vars") or {}
                 logger.info(f"CONTROLLER DECISION: action={action}, target={target_agent}")
                 return {"next_action": action, "next_agent": target_agent, "next_instructions": feedback, "agent_env_vars": agent_env_vars}
@@ -290,25 +298,6 @@ async def node_nexus_controller(state: CompleteState) -> dict:
                 logger.error(f"Controller call failed: {e}")
                 span.record_exception(e)
                 return {"next_action": "finish"}
-
-    # Post-response validation: if controller returned an error or tool failure pattern, finish
-    try:
-        if isinstance(data, dict):
-            action = data.get("action", "").lower()
-            feedback = data.get("feedback", "").lower()
-
-            # Detect tool failure patterns - finish instead of continuing
-            if "failed after 3 attempts" in feedback or "tool" in feedback and "fail" in feedback:
-                logger.warning(f"Detected tool failure in feedback: {feedback}. Finishing workflow.")
-                return {"next_action": "finish"}
-
-            # If action is anything other than recognized actions, finish
-            if action not in ["next_agent", "retry", "finish"]:
-                logger.warning(f"Unknown action from controller: {action}. Finishing workflow.")
-                return {"next_action": "finish"}
-    except Exception as e:
-        logger.error(f"Error validating controller response: {e}")
-        return {"next_action": "finish"}
 
 # ── Node: Executor ────────────────────────────────────────────────────────────
 async def node_executor(state: CompleteState) -> dict:

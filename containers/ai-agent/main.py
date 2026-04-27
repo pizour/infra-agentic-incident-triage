@@ -13,7 +13,7 @@ load_dotenv()
 # --- OpenTelemetry / Arize Phoenix Setup ---
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -53,7 +53,7 @@ if langfuse_public_key and langfuse_secret_key:
     encoded_auth = base64.b64encode(auth_str.encode()).decode()
     lf_headers = {"Authorization": f"Basic {encoded_auth}"}
     lf_endpoint = f"{langfuse_host}/api/public/otel/v1/traces"
-    provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=lf_endpoint, headers=lf_headers)))
 
 
 # Instrument frames and libraries
