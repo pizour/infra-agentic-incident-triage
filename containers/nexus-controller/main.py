@@ -117,6 +117,61 @@ Instrumentator().instrument(app).expose(app)
 
 model = GoogleModel(MODEL_NAME, provider="google-vertex")
 
+# --- Registry cache (loaded once at startup) ---
+_registry_cache: Dict[str, str] = {}
+
+async def _fetch_file_from_github(path: str) -> str:
+    """Fetch a raw file from GitHub via MCP and return its decoded text content."""
+    owner, repo = GITHUB_REPO.split('/')
+    gh_token = await get_github_oauth_token() or GH_PERSONAL_ACCESS_TOKEN
+    headers = {"Content-Type": "application/json"}
+    if gh_token:
+        headers["Authorization"] = f"Bearer {gh_token}"
+    payload = {
+        "jsonrpc": "2.0",
+        "id": "startup",
+        "method": "tools/call",
+        "params": {
+            "name": "get_file_contents",
+            "arguments": {"owner": owner, "repo": repo, "path": path},
+        },
+    }
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(GITHUB_MCP_URL, json=payload, headers=headers, timeout=30.0)
+        resp.raise_for_status()
+        for line in resp.text.strip().splitlines():
+            if line.startswith("data: "):
+                data = json.loads(line[6:])
+                if "result" in data:
+                    # MCP returns base64-encoded content inside result.content[].text
+                    result = data["result"]
+                    content_blocks = result.get("content", [])
+                    for block in content_blocks:
+                        text = block.get("text", "")
+                        try:
+                            inner = json.loads(text)
+                            raw = inner.get("content", "")
+                            return base64.b64decode(raw).decode("utf-8")
+                        except Exception:
+                            return text
+    return ""
+
+
+@app.on_event("startup")
+async def load_registries():
+    """Fetch agent and skill registries from GitHub once and cache them."""
+    for key, path in [
+        ("agents", "agents/REGISTRY.md"),
+        ("skills", "skills/REGISTRY.md"),
+    ]:
+        try:
+            content = await _fetch_file_from_github(path)
+            _registry_cache[key] = content
+            logger.info(f"Registry loaded: {path} ({len(content)} chars)")
+        except Exception as e:
+            logger.error(f"Failed to load registry {path}: {e}")
+            _registry_cache[key] = f"(unavailable: {e})"
+
 class AgentValidationResult(BaseModel):
     agent_key: str
     agent_class: str  # "control-plane" | "interaction" | "specialist"
@@ -133,17 +188,16 @@ class NexusRoutingDecision(BaseModel):
     target_agent: Optional[str] = None
     agent_env_vars: Optional[dict] = None  # env_vars from agent .md frontmatter (e.g. SYSTEM_PROMPT)
 
-ROUTER_SYSTEM_PROMPT = """You are the Nexus Controller. Evaluate the incoming validation state and produce a NexusRoutingDecision.
+BASE_ROUTER_SYSTEM_PROMPT = """You are the Nexus Controller. Evaluate the incoming validation state and produce a NexusRoutingDecision.
 
-## Available Agents (do NOT query GitHub to discover these)
+## Registries (pre-loaded — do NOT use the github tool to discover agents or skills)
 
-| routing_key       | class       | description |
-|-------------------|-------------|-------------|
-| vm_tshooter       | specialist  | SSH-based investigation for Linux VMs (CPU, memory, disk, services) |
-| k8s_tshooter      | specialist  | Kubernetes/GKE investigation (pods, nodes, services, events) |
-| deep_investigate  | specialist  | Generic investigation for ambiguous or complex alerts |
-| analyse           | specialist  | Security analysis — interprets evidence, issues VERDICT: THREAT / BENIGN |
-| create_ticket     | interaction | Creates Zammad incident ticket from final analysis |
+The agent and skill registries are injected below. Use them as your sole source of truth for routing_key values.
+Only use the github tool to read a specific agent or skill file AFTER you have selected it.
+
+{agent_registry}
+
+{skill_registry}
 
 ## agent_env_vars
 
@@ -154,19 +208,18 @@ Copy the YAML env_vars block as a dict into agent_env_vars. If no env_vars exist
 ## Routing Rules (apply in order)
 
 1. First request (latest_validation is null OR validation_history empty):
-   - Skip quality checks. Route directly to the appropriate investigation agent.
-   - For grafana source + CPU/VM alerts → vm_tshooter
-   - For grafana source + K8s alerts → k8s_tshooter
-   - For ambiguous alerts → deep_investigate
+   - Skip quality checks. Route directly to the appropriate investigation agent based on alert context.
+   - For grafana source + VM/Linux alerts → vm_tshooter
+   - For grafana source + Kubernetes/GKE alerts → k8s_tshooter
 
 2. Safety: if safety_check is False → action=finish immediately.
 
 3. Quality thresholds (subsequent requests only):
-   - If accuracy < 0.8 OR correctness < 0.8 OR completeness < 0.8 → action=retry
+   - If accuracy < 0.8 OR correctness < 0.8 OR completeness < 0.8 → action=retry (max once per agent).
+   - If agent has already been retried once → action=finish.
 
 4. Pipeline progression (grafana source):
-   After vm_tshooter/k8s_tshooter/deep_investigate → route to analyse
-   After analyse → route to create_ticket
+   After vm_tshooter or k8s_tshooter → route to create_ticket
    After create_ticket → action=finish
 
 5. Finish: user/api source with passing scores → action=finish with summary in feedback.
@@ -175,10 +228,17 @@ Copy the YAML env_vars block as a dict into agent_env_vars. If no env_vars exist
 If the github tool fails with 'failed after 3 attempts', return action=finish, feedback='Tool failures prevent routing decision', target_agent=None.
 """
 
+def build_system_prompt() -> str:
+    agent_reg = _registry_cache.get("agents", "(not loaded)")
+    skill_reg = _registry_cache.get("skills", "(not loaded)")
+    return BASE_ROUTER_SYSTEM_PROMPT.format(
+        agent_registry=f"### Agent Registry\n\n{agent_reg}",
+        skill_registry=f"### Skill Registry\n\n{skill_reg}",
+    )
+
 agent = Agent(
     model,
     output_type=NexusRoutingDecision,
-    system_prompt=ROUTER_SYSTEM_PROMPT,
     instrument=True,
 )
 
@@ -338,7 +398,10 @@ async def run_nexus_controller(run_request: RunRequest, raw_request: Request):
     token = attach(upstream_ctx)
     try:
         prompt = f"Goal: {run_request.input}\nContext: {run_request.context_summary}\nLatest Validation: {json.dumps(run_request.latest_validation or {})}"
-        result = await asyncio.wait_for(agent.run(prompt), timeout=180.0)
+        result = await asyncio.wait_for(
+            agent.run(prompt, system_prompt=build_system_prompt()),
+            timeout=180.0,
+        )
 
         # Robustly handle result attribute (Pydantic-AI 0.x uses .data, 1.x uses .output)
         decision = getattr(result, "output", getattr(result, "data", None))

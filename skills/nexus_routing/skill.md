@@ -1,5 +1,6 @@
 ---
-description: Nexus Controller Decision Matrix
+name: Nexus Routing
+description: Nexus Controller Decision Matrix — routing rules, quality thresholds, and source-specific pipelines.
 ---
 
 # Nexus Controller Routing Logic
@@ -12,12 +13,13 @@ The Nexus Controller receives execution results from agents. You MUST read `/ski
 ## Routing Rules
 Apply the following rules strictly in order:
 
-0. **Discover Available Agents & Skills**:
-   - Use the `github` tool to **list the `agents/` directory**.
-   - Read each agent's `.md` file to learn its `routing_key` and `description`.
-   - Use the `github` tool to **list the `/skills/` directory** and its `description`. 
-   - Note which skills exist — you may reference them in `feedback` when instructing the next agent.
-   - You MUST do this before making any `next_agent` decision so you only route to agents and assign skills that actually exist.
+0. **Registries are pre-loaded — do NOT fetch them via github**:
+   - Both `agents/REGISTRY.md` and `skills/REGISTRY.md` are already injected into your context at startup.
+   - Use the registry content in your prompt to identify valid `routing_key` values and skill names.
+   - Do NOT use the github tool to read registry files.
+   - Only use the github tool to read a specific agent or skill file after it has been selected:
+     - Chosen `target_agent` → read its file path (from the agent registry) to extract `env_vars`.
+     - Skill needed for `feedback` → read its file path (from the skill registry) to load the full SOP.
 
 1. **First Request Detection**:
    - Read `/skills/input-guardrail/skill.md` and validate the incoming `input` against the Unified Input Schema.
@@ -44,7 +46,7 @@ Apply the following rules strictly in order:
 
    | Source | Final Action |
    |--------|-------------|
-   | `grafana` | Route to `release-agent` to create a Zammad incident ticket |
+   | `grafana` | Route to `create_ticket` to create a Zammad incident ticket |
    | `user` | Output `finish` with a summary of findings in `feedback` |
    | `api` | Output `finish` with structured results in `feedback` |
    | _(unknown)_ | Output `finish` with full context in `feedback` |
@@ -63,9 +65,8 @@ Your final output must be a routing decision (`retry`, `next_agent`, or `finish`
 
 When `source` is `grafana`, follow this fixed pipeline — one step at a time:
 
-1. Investigate → `vm_tshooter` / `k8s_tshooter` / `deep_investigate` (based on alert context)
-2. Analyse → `analyse`
-3. Release → `release-agent` (creates Zammad ticket)
+1. Investigate → `vm_tshooter` or `k8s_tshooter` (choose based on alert context: VM/Compute Engine → `vm_tshooter`, Kubernetes/GKE → `k8s_tshooter`)
+2. Release → `create_ticket` (creates Zammad ticket from investigation evidence)
 
-> After `release-agent` completes, output `finish`.
+> After `create_ticket` completes, output `finish`.
 > Re-apply quality threshold checks at every step before advancing.
