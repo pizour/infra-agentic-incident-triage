@@ -59,7 +59,7 @@ langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
 
 if langfuse_public_key and langfuse_secret_key:
     _lf_auth = base64.b64encode(f"{langfuse_public_key}:{langfuse_secret_key}".encode()).decode()
-    _lf_endpoint = f"{langfuse_host}/api/public/otel"
+    _lf_endpoint = f"{langfuse_host}/api/public/otel/v1/traces"
     provider.add_span_processor(SimpleSpanProcessor(
         OTLPSpanExporter(endpoint=_lf_endpoint, headers={"Authorization": f"Basic {_lf_auth}"})
     ))

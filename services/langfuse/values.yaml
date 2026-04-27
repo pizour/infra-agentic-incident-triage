@@ -147,12 +147,20 @@ langfuse:
         memory: 128Mi
       limits: {}
 
+  # S3 config — tells Langfuse web/worker where to find credentials.
+  # Points to the same secret that the MinIO sub-chart creates so they are always in sync.
+  s3:
+    auth:
+      existingSecret: "langfuse-s3"
+      rootUserSecretKey: "root-user"
+      rootPasswordSecretKey: "root-password"
+
   # MinIO as S3 blob store (built-in, optional but required for event persistence)
   minio:
     deploy: true
     auth:
-      rootUser: "minioadmin"
-      rootPassword: "minioadminpassword"
+      rootUser: "minio"
+      rootPassword: "GMaVt2Cb5V"
     persistence:
       size: 10Gi
       storageClass: "standard"
