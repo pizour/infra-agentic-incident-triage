@@ -16,7 +16,7 @@ The architecture is a multi-agent orchestrated system (using **LangGraph**) desi
   - `mcp-server` (`linux-server`) for remote SSH and diagnostic operations.
   - `github-mcp-server` for CI/CD and repository context.
   - `netbox-mcp-server` to query the infrastructure source of truth.
-- **Monitoring & Observability:** Grafana, Prometheus, Loki, and Promtail for system alerting, and **Arize Phoenix** for LLM tracing.
+- **Monitoring & Observability:** Grafana, Prometheus, Loki, and Promtail for system alerting, and **Langfuse** for LLM tracing.
 - **Ticketing & IPAM:** **Zammad** for automated ticket creation and **NetBox** for infrastructure management.
 
 ## 🏗️ Infrastructure & Deployment

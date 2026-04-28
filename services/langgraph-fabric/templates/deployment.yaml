@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "new-orchestrator.fullname" . }}
+  name: {{ include "langgraph-fabric.fullname" . }}
   labels:
-    {{- include "new-orchestrator.labels" . | nindent 4 }}
+    {{- include "langgraph-fabric.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "new-orchestrator.selectorLabels" . | nindent 6 }}
+      {{- include "langgraph-fabric.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -18,13 +18,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "new-orchestrator.selectorLabels" . | nindent 8 }}
+        {{- include "langgraph-fabric.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "new-orchestrator.serviceAccountName" . }}
+      serviceAccountName: {{ include "langgraph-fabric.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:

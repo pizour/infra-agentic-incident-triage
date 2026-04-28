@@ -22,5 +22,4 @@ resources:
 
 env:
   OLLAMA_BASE_URL: "http://ollama-stack-ollama.ollama.svc.cluster.local:11434/v1"
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
-  PHOENIX_CLIENT_HEADERS: "api_key=unused"
+  LANGFUSE_HOST: "http://langfuse-web.langfuse.svc.cluster.local:3000"

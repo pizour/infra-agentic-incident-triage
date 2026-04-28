@@ -1,4 +1,4 @@
-name: Build and Push router-agent
+name: Build and Push nexus-controller
 
 on:
   push:
@@ -9,6 +9,8 @@ on:
     paths:
       - ".github/workflows/build-nexus-controller.yaml"
       - "containers/nexus-controller/**"
+      - "containers/_shared/**"
+      - "containers/.dockerignore"
   workflow_dispatch:
 
 env:
@@ -60,19 +62,21 @@ jobs:
         id: check_image
         continue-on-error: true
         run: |
-          if docker manifest inspect ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/router-agent:${{ env.TAG }} > /dev/null 2>&1; then
+          if docker manifest inspect ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/nexus-controller:${{ env.TAG }} > /dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Image router-agent:${{ env.TAG }} already exists. Skipping build."
+            echo "Image nexus-controller:${{ env.TAG }} already exists. Skipping build."
           else
             echo "exists=false" >> $GITHUB_OUTPUT
             echo "Image does not exist. Proceeding with build."
           fi
 
-      - name: Build and Push router-agent
+      - name: Build and Push nexus-controller
         if: steps.check_image.outputs.exists != 'true'
         uses: docker/build-push-action@v5
         with:
-          context: ./containers/nexus-controller
+          context: ./containers
           file: ./containers/nexus-controller/Dockerfile
           push: true
-          tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/router-agent:${{ env.TAG }},${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/router-agent:latest
+          tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/nexus-controller:${{ env.TAG }},${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/nexus-controller:latest
+          cache-from: type=gha,scope=nexus-controller
+          cache-to: type=gha,mode=max,scope=nexus-controller

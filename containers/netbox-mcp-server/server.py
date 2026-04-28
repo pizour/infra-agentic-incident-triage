@@ -5,30 +5,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-# --- OpenTelemetry / Arize Phoenix Setup ---
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-
-# Initialize TracerProvider with Service Name
-resource = Resource.create({SERVICE_NAME: "netbox-mcp-server"})
-provider = TracerProvider(resource=resource)
-trace.set_tracer_provider(provider)
-
-tracer = trace.get_tracer(__name__)
-
-# Configure OTLP Exporter (sending to Phoenix)
-endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://phoenix:6006/v1/traces")
-exporter = OTLPSpanExporter(endpoint=endpoint)
-provider.add_span_processor(BatchSpanProcessor(exporter))
-
-# Instrument outgoing HTTPX calls (to NetBox API)
-HTTPXClientInstrumentor().instrument()
-# ---------------------------------------------
 
 NETBOX_URL = os.getenv("NETBOX_URL", "http://netbox:8080")
 NETBOX_API_TOKEN = os.getenv("NETBOX_API_TOKEN")
@@ -69,81 +45,77 @@ HEADERS = {
 def lookup_device(name: str) -> str:
     """Look up a device in NetBox by name. Returns device info including primary IP."""
     logger.info(f"TOOL CALL: lookup_device name='{name}'")
-    with tracer.start_as_current_span("mcp.lookup_device") as span:
-        span.set_attribute("mcp.device_name", name)
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                resp = client.get(
-                    f"{NETBOX_URL}/api/dcim/devices/",
-                    params={"name": name},
-                    headers=HEADERS,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(
+                f"{NETBOX_URL}/api/dcim/devices/",
+                params={"name": name},
+                headers=HEADERS,
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-                if data["count"] == 0:
-                    logger.info(f"LOOKUP EMPTY: name='{name}'")
-                    return f"No device found with name '{name}'"
+            if data["count"] == 0:
+                logger.info(f"LOOKUP EMPTY: name='{name}'")
+                return f"No device found with name '{name}'"
 
-                device = data["results"][0]
-                result = {
-                    "id": device["id"],
-                    "name": device["name"],
-                    "status": device["status"]["value"] if device.get("status") else None,
-                    "site": device["site"]["name"] if device.get("site") else None,
-                    "role": device["role"]["name"] if device.get("role") else None,
-                    "device_type": device["device_type"]["display"] if device.get("device_type") else None,
-                    "primary_ip": None,
-                }
+            device = data["results"][0]
+            result = {
+                "id": device["id"],
+                "name": device["name"],
+                "status": device["status"]["value"] if device.get("status") else None,
+                "site": device["site"]["name"] if device.get("site") else None,
+                "role": device["role"]["name"] if device.get("role") else None,
+                "device_type": device["device_type"]["display"] if device.get("device_type") else None,
+                "primary_ip": None,
+            }
 
-                # Get primary IP
-                if device.get("primary_ip"):
-                    result["primary_ip"] = device["primary_ip"]["address"]
-                elif device.get("primary_ip4"):
-                    result["primary_ip"] = device["primary_ip4"]["address"]
+            # Get primary IP
+            if device.get("primary_ip"):
+                result["primary_ip"] = device["primary_ip"]["address"]
+            elif device.get("primary_ip4"):
+                result["primary_ip"] = device["primary_ip4"]["address"]
 
-                logger.info(f"LOOKUP SUCCESS: name='{name}' id={device['id']}")
-                return str(result)
-        except Exception as e:
-            logger.error(f"LOOKUP ERROR: name='{name}' error='{e}'")
-            return f"Error looking up device: {e}"
+            logger.info(f"LOOKUP SUCCESS: name='{name}' id={device['id']}")
+            return str(result)
+    except Exception as e:
+        logger.error(f"LOOKUP ERROR: name='{name}' error='{e}'")
+        return f"Error looking up device: {e}"
 
 
 @mcp.tool()
 def list_devices() -> str:
     """List all devices registered in NetBox."""
     logger.info("TOOL CALL: list_devices")
-    with tracer.start_as_current_span("mcp.list_devices") as span:
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                resp = client.get(
-                    f"{NETBOX_URL}/api/dcim/devices/",
-                    headers=HEADERS,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(
+                f"{NETBOX_URL}/api/dcim/devices/",
+                headers=HEADERS,
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-                devices = []
-                for d in data["results"]:
-                    ip = None
-                    if d.get("primary_ip"):
-                        ip = d["primary_ip"]["address"]
-                    elif d.get("primary_ip4"):
-                        ip = d["primary_ip4"]["address"]
-                    devices.append({
-                        "name": d["name"],
-                        "ip": ip,
-                        "site": d["site"]["name"] if d.get("site") else None,
-                        "role": d["role"]["name"] if d.get("role") else None,
-                    })
-                logger.info(f"LIST SUCCESS: count={len(devices)}")
-                return str(devices) if devices else "No devices found in NetBox"
-        except Exception as e:
-            logger.error(f"LIST ERROR: error='{e}'")
-            return f"Error listing devices: {e}"
+            devices = []
+            for d in data["results"]:
+                ip = None
+                if d.get("primary_ip"):
+                    ip = d["primary_ip"]["address"]
+                elif d.get("primary_ip4"):
+                    ip = d["primary_ip4"]["address"]
+                devices.append({
+                    "name": d["name"],
+                    "ip": ip,
+                    "site": d["site"]["name"] if d.get("site") else None,
+                    "role": d["role"]["name"] if d.get("role") else None,
+                })
+            logger.info(f"LIST SUCCESS: count={len(devices)}")
+            return str(devices) if devices else "No devices found in NetBox"
+    except Exception as e:
+        logger.error(f"LIST ERROR: error='{e}'")
+        return f"Error listing devices: {e}"
 
 
 # Expose the ASGI app for uvicorn with auth middleware
 app = mcp.sse_app()
-FastAPIInstrumentor.instrument_app(app)
 app.add_middleware(APIKeyAuthMiddleware)

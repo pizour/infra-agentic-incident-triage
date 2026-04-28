@@ -1,7 +1,7 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "new-orchestrator.name" -}}
+{{- define "langgraph-fabric.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -10,7 +10,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "new-orchestrator.fullname" -}}
+{{- define "langgraph-fabric.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -26,16 +26,16 @@ If release name contains chart name it will be used as a full name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "new-orchestrator.chart" -}}
+{{- define "langgraph-fabric.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "new-orchestrator.labels" -}}
-helm.sh/chart: {{ include "new-orchestrator.chart" . }}
-{{ include "new-orchestrator.selectorLabels" . }}
+{{- define "langgraph-fabric.labels" -}}
+helm.sh/chart: {{ include "langgraph-fabric.chart" . }}
+{{ include "langgraph-fabric.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -45,17 +45,17 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "new-orchestrator.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "new-orchestrator.name" . }}
+{{- define "langgraph-fabric.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "langgraph-fabric.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "new-orchestrator.serviceAccountName" -}}
+{{- define "langgraph-fabric.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "new-orchestrator.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "langgraph-fabric.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}

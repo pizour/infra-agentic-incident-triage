@@ -1,3 +1,5 @@
+# Build context: containers/ (so that _shared/ is reachable alongside nexus-controller/)
+
 # Stage 1: Builder
 FROM python:3.12-slim AS builder
 
@@ -9,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python requirements
-COPY requirements.txt .
+COPY nexus-controller/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Stage 2: Runtime
@@ -24,8 +26,10 @@ COPY --from=builder /app/requirements.txt .
 # Ensure the local bin is in PATH
 ENV PATH=/root/.local/bin:$PATH
 
+# Copy shared module (imported as `_shared.github_mcp`)
+COPY _shared/ ./_shared/
 # Copy application code
-COPY . .
+COPY nexus-controller/ .
 
 # Expose port
 EXPOSE 8010

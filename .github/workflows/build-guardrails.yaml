@@ -74,3 +74,5 @@ jobs:
           file: ./containers/guardrails/Dockerfile
           push: true
           tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/guardrails:${{ env.TAG }},${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/guardrails:latest
+          cache-from: type=gha,scope=guardrails
+          cache-to: type=gha,mode=max,scope=guardrails

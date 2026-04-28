@@ -76,3 +76,5 @@ jobs:
           file: ./containers/linux-mcp-server/Dockerfile
           push: true
           tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/linux-mcp-server:${{ env.TAG }},${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/linux-mcp-server:latest
+          cache-from: type=gha,scope=linux-mcp-server
+          cache-to: type=gha,mode=max,scope=linux-mcp-server

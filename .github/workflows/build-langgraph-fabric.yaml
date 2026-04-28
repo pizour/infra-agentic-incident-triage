@@ -1,4 +1,4 @@
-name: Build and Push ai-orchestrator
+name: Build and Push langgraph-fabric
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     tags:
       - "v*"
     paths:
-      - ".github/workflows/build-ai-orchestrator.yaml"
-      - "containers/ai-orchestrator/**"
+      - ".github/workflows/build-langgraph-fabric.yaml"
+      - "containers/langgraph-fabric/**"
   workflow_dispatch:
 
 env:
@@ -60,19 +60,21 @@ jobs:
         id: check_image
         continue-on-error: true
         run: |
-          if docker manifest inspect ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/ai-orchestrator:${{ env.TAG }} > /dev/null 2>&1; then
+          if docker manifest inspect ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/langgraph-fabric:${{ env.TAG }} > /dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Image ai-orchestrator:${{ env.TAG }} already exists. Skipping build."
+            echo "Image langgraph-fabric:${{ env.TAG }} already exists. Skipping build."
           else
             echo "exists=false" >> $GITHUB_OUTPUT
             echo "Image does not exist. Proceeding with build."
           fi
 
-      - name: Build and Push ai-orchestrator
+      - name: Build and Push langgraph-fabric
         if: steps.check_image.outputs.exists != 'true'
         uses: docker/build-push-action@v5
         with:
-          context: ./containers/ai-orchestrator
-          file: ./containers/ai-orchestrator/Dockerfile
+          context: ./containers/langgraph-fabric
+          file: ./containers/langgraph-fabric/Dockerfile
           push: true
-          tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/ai-orchestrator:${{ env.TAG }},${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/ai-orchestrator:latest
+          tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/langgraph-fabric:${{ env.TAG }},${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/langgraph-fabric:latest
+          cache-from: type=gha,scope=langgraph-fabric
+          cache-to: type=gha,mode=max,scope=langgraph-fabric

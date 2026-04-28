@@ -1,5 +1,5 @@
 """
-Simulate Grafana alert webhooks to the AI-Orchestrator /task endpoint.
+Simulate Grafana alert webhooks to the LangGraph-Fabric /task endpoint.
 
 Usage:
     python tests/simulate_grafana_alert.py                          # default: localhost:8009
@@ -152,7 +152,7 @@ async def main(base_url: str, api_key: str | None) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Simulate Grafana alerts to AI-Orchestrator")
+    parser = argparse.ArgumentParser(description="Simulate Grafana alerts to LangGraph-Fabric")
     parser.add_argument("--url", default="http://localhost:8009", help="Orchestrator base URL")
     parser.add_argument("--api-key", default=None, help="X-API-Key for authentication")
     args = parser.parse_args()

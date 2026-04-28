@@ -9,6 +9,8 @@ on:
     paths:
       - ".github/workflows/build-ai-agent.yaml"
       - "containers/ai-agent/**"
+      - "containers/_shared/**"
+      - "containers/.dockerignore"
   workflow_dispatch:
 
 env:
@@ -72,7 +74,9 @@ jobs:
         if: steps.check_image.outputs.exists != 'true'
         uses: docker/build-push-action@v5
         with:
-          context: ./containers/ai-agent
+          context: ./containers
           file: ./containers/ai-agent/Dockerfile
           push: true
           tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/ai-agent:${{ env.TAG }},${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/ai-agent:latest
+          cache-from: type=gha,scope=ai-agent
+          cache-to: type=gha,mode=max,scope=ai-agent

@@ -76,3 +76,5 @@ jobs:
           file: ./containers/netbox-mcp-server/Dockerfile
           push: true
           tags: ${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/netbox-mcp-server:${{ env.TAG }},${{ env.GAR_LOCATION }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/netbox-mcp-server:latest
+          cache-from: type=gha,scope=netbox-mcp-server
+          cache-to: type=gha,mode=max,scope=netbox-mcp-server

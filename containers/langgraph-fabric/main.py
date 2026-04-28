@@ -3,6 +3,7 @@ import json
 import httpx
 import time
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
 from typing_extensions import TypedDict
 from dotenv import load_dotenv
@@ -28,7 +29,7 @@ load_dotenv()
 # ── OpenTelemetry ─────────────────────────────────────────────────────────────
 from opentelemetry import trace, propagate
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -39,10 +40,10 @@ from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.context import attach, detach
 from prometheus_fastapi_instrumentator import Instrumentator
 from openinference.instrumentation.langchain import LangChainInstrumentor
-ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT", "dev")
+ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT")
 
 resource = Resource.create({
-    SERVICE_NAME: "ai-orchestrator",
+    SERVICE_NAME: "langgraph-fabric",
     "openinference.project.name": "ai-agent-triage",
     "deployment.environment": ENVIRONMENT,
 })
@@ -56,19 +57,10 @@ propagate.set_global_textmap(CompositePropagator([TraceContextTextMapPropagator(
 # Instrument LangChain/LangGraph FIRST — adds OpenInference attributes before export
 LangChainInstrumentor().instrument()
 
-# Arize Phoenix OTLP Export (all spans)
-endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces")
-try:
-    phoenix_exporter = OTLPSpanExporter(endpoint=endpoint)
-    provider.add_span_processor(SimpleSpanProcessor(phoenix_exporter))
-    logger.info(f"Phoenix OTLP exporter initialized: {endpoint}")
-except Exception as e:
-    logger.error(f"Failed to initialize Phoenix exporter: {e}")
-
 # Langfuse OTLP Export (via BatchSpanProcessor — non-blocking)
-langfuse_host = os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000")
-langfuse_pk = os.getenv("LANGFUSE_PUBLIC_KEY", "")
-langfuse_sk = os.getenv("LANGFUSE_SECRET_KEY", "")
+langfuse_host = os.getenv("LANGFUSE_HOST")
+langfuse_pk = os.getenv("LANGFUSE_PUBLIC_KEY")
+langfuse_sk = os.getenv("LANGFUSE_SECRET_KEY")
 if langfuse_pk and langfuse_sk:
     langfuse_auth = base64.b64encode(f"{langfuse_pk}:{langfuse_sk}".encode()).decode()
     langfuse_exporter = OTLPSpanExporter(
@@ -86,8 +78,7 @@ else:
 HTTPXClientInstrumentor().instrument()
 # ─────────────────────────────────────────────────────────────────────────────
 
-from fastapi import FastAPI, HTTPException, Security, status, Request
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -96,9 +87,9 @@ from slowapi.errors import RateLimitExceeded
 from langgraph.graph import StateGraph, END
 
 # --- Configuration ---
-NAMESPACE = os.getenv("NAMESPACE", "ai-agent")
-ROUTER_API = os.getenv("ROUTER_API", f"http://router-agent.{NAMESPACE}.svc.cluster.local:8010/run")
-GENERIC_AGENT_IMAGE = os.getenv("GENERIC_AGENT_IMAGE", "europe-west4-docker.pkg.dev/ai-incident-triage/gke-artifacts-dev/ai-agent:latest")
+NAMESPACE = os.getenv("NAMESPACE")
+NEXUS_API = os.getenv("NEXUS_API")
+GENERIC_AGENT_IMAGE = os.getenv("GENERIC_AGENT_IMAGE")
 
 # Initialize Kubernetes client
 try:
@@ -109,40 +100,21 @@ except:
 core_v1 = client.CoreV1Api()
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging()
+    logger.info("LangGraph-Fabric refined logging and connectivity initialized")
+    yield
+    logger.info("Flushing OpenTelemetry spans...")
+    provider.force_flush(timeout_millis=5000)
+
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="AI Orchestrator")
+app = FastAPI(title="LangGraph Fabric", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
 Instrumentator().instrument(app).expose(app)
-
-@app.on_event("startup")
-async def startup_event():
-    setup_logging()
-    logger.info("AI-Orchestrator refined logging and connectivity initialized")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Flushing OpenTelemetry spans to Phoenix...")
-    provider.force_flush(timeout_millis=5000)
-
-# ── Auth ──────────────────────────────────────────────────────────────────────
-API_KEY_NAME = "X-API-Key"
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
-
-
-def get_api_key(api_key_header: Optional[str] = Security(api_key_header)) -> str:
-    expected_key = os.getenv("APP_API_KEY")
-    if not expected_key:
-        return "not-set"
-    if api_key_header and api_key_header == expected_key:
-        return api_key_header
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Could not validate credentials",
-    )
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LangGraph State Machine
@@ -172,20 +144,16 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
     port = 8000
     logger.info(f"SPAWNING POD: {pod_name} for agent={agent_id}")
     
-    # Static env vars (same as Helm values.yaml env section)
-    static_env = {
-        "OTEL_EXPORTER_OTLP_ENDPOINT": os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"),
-        "PHOENIX_CLIENT_HEADERS": os.getenv("PHOENIX_CLIENT_HEADERS", "api_key=unused"),
-        "LLM_MODEL": os.getenv("LLM_MODEL", "gemini-2.5-flash"),
-        "GUARDRAILS_URL": os.getenv("GUARDRAILS_URL", "http://guardrails.ai-agent.svc.cluster.local:8080"),
-        "ZAMMAD_URL": os.getenv("ZAMMAD_URL", "http://zammad.zammad.svc.cluster.local:8080"),
-        "LANGFUSE_HOST": os.getenv("LANGFUSE_HOST", "http://langfuse.ai-agent.svc.cluster.local:3000"),
-        "GITHUB_MCP_URL": os.getenv("GITHUB_MCP_URL", "http://github-mcp-server:8080/mcp"),
-        "GITHUB_REPO": os.getenv("GITHUB_REPO", "pizour/infra-agentic-incident-triage"),
-        "NAMESPACE": NAMESPACE,
-        "GOOGLE_CLOUD_PROJECT": os.getenv("GOOGLE_CLOUD_PROJECT", ""),
-        "GOOGLE_CLOUD_LOCATION": os.getenv("GOOGLE_CLOUD_LOCATION", "europe-west4"),
-    }
+    # Forward env vars from the orchestrator to the spawned pod (mirrors Helm values.yaml env section)
+    forwarded_keys = [
+        "LLM_MODEL",
+        "GUARDRAILS_URL", "ZAMMAD_URL", "LANGFUSE_HOST",
+        "GITHUB_MCP_URL", "GITHUB_REPO",
+        "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION",
+    ]
+    static_env = {k: v for k, v in ((k, os.getenv(k)) for k in forwarded_keys) if v is not None}
+    if NAMESPACE is not None:
+        static_env["NAMESPACE"] = NAMESPACE
     # Override/extend with caller-provided env vars
     static_env.update(env_vars)
 
@@ -193,7 +161,7 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
 
     # Mount all secrets from ai-agent-secrets (same keys as Helm secrets section)
     secret_keys = [
-        "APP_API_KEY", "MCP_API_KEY", "NETBOX_MCP_API_KEY",
+        "MCP_API_KEY", "NETBOX_MCP_API_KEY",
         "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY",
         "ZAMMAD_TOKEN", "ZAMMAD_USER", "ZAMMAD_PASS",
         "GH_PERSONAL_ACCESS_TOKEN",
@@ -257,12 +225,11 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
 
     agent_url = f"http://{pod_ip}:{port}/agent"
     logger.info(f"CALLING AGENT: {agent_id} at {agent_url}")
-    agent_api_key = os.getenv("APP_API_KEY", "")
     body: Dict[str, Any] = {"prompt": prompt}
     if system_prompt:
         body["system_prompt"] = system_prompt
     async with httpx.AsyncClient(timeout=300.0) as client_http:
-        resp = await client_http.post(agent_url, json=body, headers={"X-API-Key": agent_api_key})
+        resp = await client_http.post(agent_url, json=body)
         logger.info(f"AGENT {agent_id} HTTP {resp.status_code}")
         if not resp.is_success:
             logger.error(f"AGENT {agent_id} error body: {resp.text[:500]}")
@@ -273,7 +240,7 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
 # ── Node: Nexus Controller ──────────────────────────────────────────────────────────
 async def node_nexus_controller(state: CompleteState) -> dict:
     logger.info("NODE: nexus_controller - evaluating state")
-    with tracer.start_as_current_span("ai-orchestrator.node.nexus_controller") as span:
+    with tracer.start_as_current_span("langgraph-fabric.node.nexus_controller") as span:
         span.set_attribute("langfuse.observation.type", "span")
         latest = state.get("latest_validation")
         span.set_attribute("langfuse.observation.input", json.dumps({"latest_agent": latest.get("agent_key") if latest else None}))
@@ -285,7 +252,7 @@ async def node_nexus_controller(state: CompleteState) -> dict:
         # 90s total: nexus-controller does 2 LLM calls + 1 GitHub MCP call
         async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=200.0, write=10.0, pool=5.0)) as client:
             try:
-                response = await client.post(ROUTER_API, json=payload)
+                response = await client.post(NEXUS_API, json=payload)
                 response.raise_for_status()
                 data = response.json()
                 action = data.get("action", "finish").lower()
@@ -339,7 +306,7 @@ async def node_executor(state: CompleteState) -> dict:
         return {"next_action": "finish", "retry_count": current_retry}
 
     logger.info(f"NODE: executor - forwarding to agent={agent_id} (attempt {current_retry}/3)")
-    with tracer.start_as_current_span(f"ai-orchestrator.node.execute.{agent_id}") as span:
+    with tracer.start_as_current_span(f"langgraph-fabric.node.execute.{agent_id}") as span:
         span.set_attribute("langfuse.observation.type", "span")
         span.set_attribute("langfuse.observation.metadata.agent_id", str(agent_id))
         span.set_attribute("langfuse.observation.metadata.attempt", str(current_retry))
@@ -426,7 +393,7 @@ class TaskRequest(BaseModel):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "message": "AI-Orchestrator Dynamic running"}
+    return {"status": "ok", "message": "LangGraph-Fabric Dynamic running"}
 
 @app.post("/task")
 async def run_task(task_request: TaskRequest, raw_request: Request):
@@ -450,7 +417,7 @@ async def run_task(task_request: TaskRequest, raw_request: Request):
     }
     session_id = f"task-{int(time.time())}"
     try:
-        with tracer.start_as_current_span("ai-orchestrator.task.execution") as span:
+        with tracer.start_as_current_span("langgraph-fabric.task.execution") as span:
             # Langfuse trace attributes for grouping, filtering, and dashboard views
             span.set_attribute("langfuse.trace.name", "task-execution")
             span.set_attribute("langfuse.session.id", session_id)
@@ -512,7 +479,7 @@ async def handle_alert(request: Request, payload: dict):
     session_id = f"alert-{alert_name}-{int(time.time())}"
 
     try:
-        with tracer.start_as_current_span("ai-orchestrator.alert.orchestration") as span:
+        with tracer.start_as_current_span("langgraph-fabric.alert.orchestration") as span:
             # Langfuse trace attributes for grouping, filtering, and dashboard views
             span.set_attribute("langfuse.trace.name", f"alert-{alert_name}")
             span.set_attribute("langfuse.session.id", session_id)

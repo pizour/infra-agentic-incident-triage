@@ -4,7 +4,7 @@ image:
   registry: europe-west4-docker.pkg.dev
   project: ai-incident-triage
   repository: gke-artifacts-dev
-  name: router-agent
+  name: nexus-controller
   pullPolicy: Always
   tag: "latest"
 
@@ -27,14 +27,13 @@ env:
   GITHUB_REPO: "pizour/infra-agentic-incident-triage"
   GOOGLE_CLOUD_PROJECT: "ai-incident-triage"
   GOOGLE_CLOUD_REGION: "europe-west4"
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://monitoring-phoenix.monitoring.svc.cluster.local:6006/v1/traces"
   LANGFUSE_HOST: "http://langfuse-web.langfuse.svc.cluster.local:3000"
 
 serviceAccount:
   create: true
   annotations:
     iam.gke.io/gcp-service-account: "gke-cluster-dev-pods-sa@ai-incident-triage.iam.gserviceaccount.com"
-  name: "router-agent"
+  name: "nexus-controller"
 
 # Skills will be mounted from GitHub or PVC
 persistence:

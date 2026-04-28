@@ -1,13 +1,13 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "new-orchestrator.fullname" . }}-pod-creator-binding
+  name: {{ include "langgraph-fabric.fullname" . }}-pod-creator-binding
   namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ include "new-orchestrator.fullname" . }}-pod-creator
+  name: {{ include "langgraph-fabric.fullname" . }}-pod-creator
 subjects:
 - kind: ServiceAccount
-  name: {{ include "new-orchestrator.serviceAccountName" . }}
+  name: {{ include "langgraph-fabric.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}

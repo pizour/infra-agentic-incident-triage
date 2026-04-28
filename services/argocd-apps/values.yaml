@@ -24,11 +24,11 @@ applications:
   - name: github-mcp-server
     path: services/github-mcp-server
     namespace: ai-agent
-  - name: router-agent
+  - name: nexus-controller
     path: services/nexus-controller
     namespace: ai-agent
-  - name: ai-orchestrator
-    path: services/ai-orchestrator
+  - name: langgraph-fabric
+    path: services/langgraph-fabric
     namespace: ai-agent
   - name: langfuse
     path: services/langfuse

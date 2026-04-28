@@ -6,12 +6,12 @@ An AI-powered security monitoring and incident response system that replaces man
 
 ## Architecture Overview
 
-Multi-agent orchestrated system using **LangGraph** with specialized agents routed by a central controller. Follows a "dumb executor + smart router" pattern: agents execute tasks, the Nexus Controller evaluates outputs and decides the next step.
+Multi-agent orchestrated system using **LangGraph** with specialized agents routed by a central controller. Follows a "dumb executor + smart controller" pattern: agents execute tasks, the Nexus Controller evaluates outputs and decides the next step.
 
 ### Core Flow
 
 ```
-Grafana Alert → AI-Orchestrator → Input Guardrail (validation - not yet in the path)
+Grafana Alert → LangGraph-Fabric → Input Guardrail (validation - not yet in the path)
     → Nexus Controller (routing) → Specialist Agent (investigation)
     → Ticket Agent (Zammad incident creation) → Done
 ```
@@ -22,8 +22,8 @@ Grafana Alert → AI-Orchestrator → Input Guardrail (validation - not yet in t
 
 | Component | Port | Role |
 |-----------|------|------|
-| **ai-orchestrator** | 8009 | FastAPI + LangGraph workflow engine; spawns agent pods dynamically via K8s API |
-| **nexus-controller** | 8010 | Pydantic-AI router; evaluates agent outputs against quality thresholds (accuracy/correctness/completeness >= 0.8), decides next_agent/retry/finish |
+| **langgraph-fabric** | 8009 | FastAPI + LangGraph workflow engine; spawns agent pods dynamically via K8s API |
+| **nexus-controller** | 8010 | Pydantic-AI controller; evaluates agent outputs against quality thresholds (accuracy/correctness/completeness >= 0.8), decides next_agent/retry/finish |
 | **input-guardrail** | 8000 | Prompt injection detection, schema validation, topic relevance, PII masking |
 
 ### Specialist Agents (dynamically spawned pods)
@@ -51,7 +51,6 @@ Grafana Alert → AI-Orchestrator → Input Guardrail (validation - not yet in t
 | **Zammad** | Incident ticketing (PostgreSQL + Redis + Elasticsearch) |
 | **NetBox** | Infrastructure CMDB and IP/device inventory |
 | **Langfuse** | LLM observability and tracing |
-| **Arize Phoenix** | OpenTelemetry trace visualization |
 | **Prometheus + Grafana** | Metrics and dashboards |
 | **Loki + Promtail** | Log aggregation |
 | **ArgoCD** | GitOps continuous deployment |
@@ -62,7 +61,7 @@ Grafana Alert → AI-Orchestrator → Input Guardrail (validation - not yet in t
 - **Frameworks**: FastAPI, Pydantic-AI, LangGraph, Pydantic
 - **LLM Provider**: Google Vertex AI (gemini-2.5-flash)
 - **Protocol**: MCP (Model Context Protocol) over SSE
-- **Observability**: OpenTelemetry → Phoenix/Langfuse; Prometheus → Grafana
+- **Observability**: OpenTelemetry → Langfuse; Prometheus → Grafana
 - **Infrastructure**: GKE on GCP, Pulumi (IaC), Helm charts, ArgoCD (GitOps)
 - **CI/CD**: GitHub Actions → Google Artifact Registry → ArgoCD
 - **Auth**: X-API-Key (inter-service), X-MCP-API-Key (MCP), GCP Workload Identity
@@ -118,12 +117,12 @@ ai-agent-triage/
 │   └── specialists/           # vm-tshooter.md, k8s-tshooter.md, analysis-agent.md, deep-agent.md
 ├── containers/                # Source code + Dockerfiles
 │   ├── ai-agent/              # Generic agent container (main.py)
-│   ├── ai-orchestrator/       # LangGraph orchestrator (main.py)
-│   ├── nexus-controller/      # Router agent (main.py)
+│   ├── langgraph-fabric/       # LangGraph orchestrator (main.py)
+│   ├── nexus-controller/      # Nexus Controller (main.py)
 │   ├── linux-mcp-server/      # SSH MCP (server.py)
 │   └── netbox-mcp-server/     # CMDB MCP (server.py)
 ├── services/                  # Helm charts for all K8s deployments
-│   ├── ai-orchestrator/
+│   ├── langgraph-fabric/
 │   ├── ai-agent/
 │   ├── nexus-controller/
 │   ├── linux-mcp-server/
@@ -131,7 +130,7 @@ ai-agent-triage/
 │   ├── github-mcp-server/
 │   ├── zammad/
 │   ├── netbox/
-│   ├── monitoring/            # Phoenix, Prometheus, Grafana, Loki, Promtail
+│   ├── monitoring/            # Prometheus, Grafana, Loki, Promtail
 │   ├── langfuse/
 │   └── argocd-apps/
 ├── skills/                    # SOPs fetched by agents at runtime via GitHub MCP
@@ -151,7 +150,7 @@ ai-agent-triage/
 
 ```
 ┌─────────────┐   webhook    ┌──────────────────┐
-│   Grafana    │────────────→│  AI-Orchestrator  │
+│   Grafana    │────────────→│  LangGraph-Fabric  │
 └─────────────┘              │  (LangGraph)      │
                              └────────┬─────────┘
                                       │ spawns pods / HTTP calls
@@ -184,4 +183,4 @@ ai-agent-triage/
 - **Dynamic pod spawning**: Orchestrator creates/destroys agent pods on-demand via K8s API
 - **Structured evaluation loop**: Nexus Controller applies quality thresholds and can retry or reroute agents
 - **Multi-stage Docker builds**: Builder + runtime stages for minimal images
-- **Full observability stack**: Every LLM call traced via OpenTelemetry to Phoenix and Langfuse
+- **Full observability stack**: Every LLM call traced via OpenTelemetry to Langfuse

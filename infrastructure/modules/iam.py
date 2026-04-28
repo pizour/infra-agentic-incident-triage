@@ -73,7 +73,7 @@ def create_service_accounts(project_name: str, cluster_name: str, region: str) -
             f'serviceAccount:{project_name}.svc.id.goog[ai-agent/analysis-agent]',
             f'serviceAccount:{project_name}.svc.id.goog[ai-agent/investigation-agent]',
             f'serviceAccount:{project_name}.svc.id.goog[ai-agent/ticket-agent]',
-            f'serviceAccount:{project_name}.svc.id.goog[ai-agent/router-agent]',
+            f'serviceAccount:{project_name}.svc.id.goog[ai-agent/nexus-controller]',
             f'serviceAccount:{project_name}.svc.id.goog[ai-agent/default]',
         ],
     )
