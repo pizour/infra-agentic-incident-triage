@@ -42,6 +42,5 @@ Every agent in this system MUST return its result in the following structured fo
 
 1. Always populate `agent_key` with your exact `routing_key`.
 2. Be honest with your scores — do not inflate them.
-3. Keep `reasoning` under 50 characters.
-4. Put all task findings inside `data`, not in `reasoning`.
-5. Set `safety_check: false` if you encountered something unsafe, off-scope, or could not complete the task safely.
+3. Put all task findings inside `data`, not in `reasoning`.
+4. Set `safety_check: false` if you encountered something unsafe, off-scope, or could not complete the task safely.

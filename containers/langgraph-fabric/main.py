@@ -89,6 +89,7 @@ from langgraph.graph import StateGraph, END
 # --- Configuration ---
 NAMESPACE = os.getenv("NAMESPACE")
 NEXUS_API = os.getenv("NEXUS_API")
+INPUT_GUARDRAIL_API = os.getenv("INPUT_GUARDRAIL_API")
 GENERIC_AGENT_IMAGE = os.getenv("GENERIC_AGENT_IMAGE")
 
 # Initialize Kubernetes client
@@ -237,8 +238,52 @@ async def run_agent_pod(agent_id: str, prompt: str, env_vars: Dict[str, str], sy
         return pod_name, resp.json().get("result", "")
 
 
+# ── Node: Input Guardrail ─────────────────────────────────────────────────────
+async def node_input_guardrail(state: CompleteState) -> dict:
+    """First node: validate raw input via the stationary input-guardrail service.
+    On rejection, set next_action='finish' so node_nexus_controller short-circuits to cleanup."""
+    logger.info("NODE: input_guardrail - validating input")
+    with tracer.start_as_current_span("langgraph-fabric.node.input_guardrail") as span:
+        span.set_attribute("langfuse.observation.type", "span")
+        payload = {
+            "input": state["input"],
+            "context_summary": str(state.get("context", {})),
+        }
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0)) as client:
+            try:
+                response = await client.post(INPUT_GUARDRAIL_API, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                safety_check = bool(data.get("safety_check"))
+                feedback = data.get("feedback", "")
+                masked_input = data.get("masked_input")
+
+                span.set_attribute("langfuse.observation.output", json.dumps({
+                    "safety_check": safety_check,
+                }))
+                logger.info(f"GUARDRAIL: safety_check={safety_check}")
+
+                # Only the orchestrator translates a guardrail rejection into a
+                # 'finish' action; the guardrail itself never specifies actions.
+                if not safety_check:
+                    return {
+                        "next_action": "finish",
+                        "next_instructions": feedback,
+                    }
+                # Pass: forward (optionally PII-masked) input to nexus_controller
+                return {"input": masked_input if masked_input else state["input"]}
+            except Exception as e:
+                logger.error(f"INPUT GUARDRAIL: call failed: {e}. Failing closed.")
+                span.record_exception(e)
+                return {"next_action": "finish"}
+
+
 # ── Node: Nexus Controller ──────────────────────────────────────────────────────────
 async def node_nexus_controller(state: CompleteState) -> dict:
+    # Short-circuit if upstream (input_guardrail) already decided to finish.
+    if state.get("next_action") == "finish":
+        logger.info("NODE: nexus_controller - upstream finish, passing through")
+        return {}
     logger.info("NODE: nexus_controller - evaluating state")
     with tracer.start_as_current_span("langgraph-fabric.node.nexus_controller") as span:
         span.set_attribute("langfuse.observation.type", "span")
@@ -365,11 +410,16 @@ def route_from_controller(state: CompleteState) -> str:
 # ── Graph compilation ─────────────────────────────────────────────────────────
 def _build_graph() -> StateGraph:
     g = StateGraph(CompleteState)
+    g.add_node("input_guardrail", node_input_guardrail)
     g.add_node("nexus_controller", node_nexus_controller)
     g.add_node("execute", node_executor)
     g.add_node("cleanup", node_cleanup)
 
-    g.set_entry_point("nexus_controller")
+    g.set_entry_point("input_guardrail")
+    # Static edge: guardrail's only forward path is to nexus_controller.
+    # On rejection (safety_check=false), node_input_guardrail sets next_action='finish';
+    # nexus_controller short-circuits and route_from_controller routes to cleanup.
+    g.add_edge("input_guardrail", "nexus_controller")
     g.add_conditional_edges(
         "nexus_controller",
         route_from_controller,

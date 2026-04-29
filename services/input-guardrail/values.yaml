@@ -1,0 +1,46 @@
+replicaCount: 1
+
+image:
+  registry: europe-west4-docker.pkg.dev
+  project: ai-incident-triage
+  repository: gke-artifacts-dev
+  name: input-guardrail
+  pullPolicy: Always
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8000
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+env:
+  MODEL_NAME: "gemini-2.5-flash"
+  GITHUB_MCP_URL: "http://github-mcp-server.ai-agent.svc.cluster.local:8080/mcp"
+  GITHUB_REPO: "pizour/infra-agentic-incident-triage"
+  GOOGLE_CLOUD_PROJECT: "ai-incident-triage"
+  GOOGLE_CLOUD_REGION: "europe-west4"
+  LANGFUSE_HOST: "http://langfuse-web.langfuse.svc.cluster.local:3000"
+
+serviceAccount:
+  create: true
+  annotations:
+    iam.gke.io/gcp-service-account: "gke-cluster-dev-pods-sa@ai-incident-triage.iam.gserviceaccount.com"
+  name: "input-guardrail"
+
+# Secrets injected as env vars from K8s Secrets
+secrets:
+  LANGFUSE_PUBLIC_KEY: ""
+  LANGFUSE_SECRET_KEY: ""
+  GH_PERSONAL_ACCESS_TOKEN: ""
+  GH_OAUTH_APP_ID: ""
+  GH_OAUTH_CLIENT_ID: ""
+  GH_OAUTH_CLIENT_SECRET: ""
+  GH_OAUTH_PRIVATE_KEY: ""
+  GH_OAUTH_INSTALLATION_ID: ""

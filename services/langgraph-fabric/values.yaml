@@ -60,6 +60,7 @@ affinity: {}
 
 env:
   NEXUS_API: "http://nexus-controller.ai-agent.svc.cluster.local:8010/run"
+  INPUT_GUARDRAIL_API: "http://input-guardrail.ai-agent.svc.cluster.local:8000/run"
   GENERIC_AGENT_IMAGE: "europe-west4-docker.pkg.dev/ai-incident-triage/gke-artifacts-dev/ai-agent:latest"
   NAMESPACE: "ai-agent"
   GOOGLE_CLOUD_PROJECT: "ai-incident-triage"
